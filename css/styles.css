@@ -1,0 +1,103 @@
+body {
+  font-family: 'Red Hat Mono', monospace;
+  font-weight: 400; /* eliminate bold */
+  color: black;
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 400; /* bold for headings */
+}
+
+.body-text {
+}
+
+.centered-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+}
+
+.button {
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  background: black;
+  color: white;
+  border: none;
+  border-radius: 0.5rem;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.section-heading {
+  font-size: 1.25rem;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+/* --- Recipe Editor / Prototype Styles --- */
+body.recipe-editor-page {
+  padding: 2rem;
+}
+
+#recipeView h1,
+#recipeView h2 {
+  margin-bottom: 1rem;
+  font-weight: 400;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.ingredient-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+.qty-span {
+  min-width: 2ch;
+  margin-right: 0.25rem; /* space between number and unit */
+}
+
+.unit-span {
+  margin: 0 0.5ch; /* extra padding around unit */
+  min-width: 2ch;
+}
+
+.name-span {
+  flex: 1 1 auto;
+}
+
+.instruction-line {
+  margin-bottom: 0.5rem;
+}
+
+.inline-input {
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 1rem;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #000;
+  border-radius: 2px;
+  text-align: left;
+  box-sizing: content-box;
+}

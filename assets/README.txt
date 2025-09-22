@@ -1,0 +1,1 @@
+Place assets like wasm files or icons here.
