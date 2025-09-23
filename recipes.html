@@ -7,7 +7,18 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/sql-wasm.js"></script>
   </head>
   <body class="recipes-page">
+    <div class="app-bar">
+      <div class="title">Recipes</div>
+      <div class="search-bar">
+        <input type="text" placeholder="Search" />
+      </div>
+      <div class="actions">
+        <button class="button" id="recipesActionBtn">Action</button>
+      </div>
+    </div>
+
     <ul id="recipeList"></ul>
+
     <script src="js/utils.js"></script>
     <script src="js/ingredientEditor.js"></script>
     <script src="js/recipeEditor.js"></script>

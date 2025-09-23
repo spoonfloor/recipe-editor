@@ -34,7 +34,7 @@ if (loadDbBtn && dbLoader) {
   });
 }
 
-// Recipes page logic: read DB from localStorage and show list
+// Recipes page logic
 function loadRecipesPage() {
   const stored = localStorage.getItem('favoriteEatsDb');
   if (!stored) {
@@ -62,6 +62,22 @@ function loadRecipesPage() {
       list.appendChild(li);
     });
   }
+
+  // Stub for recipes action button
+  const recipesActionBtn = document.getElementById('recipesActionBtn');
+  if (recipesActionBtn) {
+    recipesActionBtn.addEventListener('click', () => {
+      console.log('Recipes action button clicked');
+    });
+  }
+
+  // Live search stub
+  const searchInput = document.querySelector('.app-bar .search-bar input');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      console.log('Search input changed:', e.target.value);
+    });
+  }
 }
 
 // Recipe editor page logic
@@ -83,31 +99,77 @@ function loadRecipeEditorPage() {
     return;
   }
 
-  // Query recipe by ID
-  const recipes = db.exec(
-    `SELECT ID, title FROM recipes WHERE ID=${recipeId};`
+  // --- Load recipe title ---
+  const recipeTitleQuery = db.exec(
+    `SELECT title FROM recipes WHERE ID=${recipeId};`
   );
-  if (recipes.length > 0) {
-    const [id, title] = recipes[0].values[0];
-    // TODO: replace fakeRecipe with real query for sections/ingredients/steps
-    const fakeRecipe = {
-      title,
-      sections: [
-        {
-          name: 'Filling',
-          ingredients: [
-            { quantity: 2, unit: 'tbsp', name: 'extra-virgin olive oil' },
-            { quantity: 1, unit: '', name: 'yellow onion, chopped' },
-            { quantity: 0.5, unit: 'tsp', name: 'fine sea salt, to taste' },
-          ],
-          steps: [
-            'Preheat the oven to 425 degrees Fahrenheit.',
-            'Prepare the filling: In a large skillet over medium heat, warm the olive oil.',
-            'Add onion, carrots, mushrooms, salt and pepper.',
-          ],
-        },
-      ],
-    };
-    renderRecipe(fakeRecipe);
+  if (recipeTitleQuery.length === 0) {
+    alert('Recipe not found.');
+    window.location.href = 'recipes.html';
+    return;
+  }
+  const recipeTitle = recipeTitleQuery[0].values[0][0];
+
+  // Update app bar title
+  const appBarTitle = document.getElementById('recipeTitle');
+  if (appBarTitle) appBarTitle.textContent = recipeTitle;
+
+  // --- Load sections ---
+  const sectionsQuery = db.exec(
+    `SELECT ID, name FROM recipe_sections WHERE recipe_id=${recipeId} ORDER BY sort_order;`
+  );
+
+  const recipeSections =
+    sectionsQuery.length > 0 ? sectionsQuery[0].values : [];
+
+  const recipe = {
+    title: recipeTitle,
+    sections: [],
+  };
+
+  // For each section, load ingredients and steps
+  recipeSections.forEach(([sectionId, sectionName]) => {
+    // Ingredients
+    const ingQuery = db.exec(
+      `SELECT rim.quantity, rim.unit, i.name
+       FROM recipe_ingredient_map rim
+       JOIN ingredients i ON rim.ingredient_id = i.ID
+       WHERE rim.recipe_id=${recipeId} AND rim.section_id=${sectionId};`
+    );
+    const ingredients =
+      ingQuery.length > 0
+        ? ingQuery[0].values.map(([qty, unit, name]) => ({
+            quantity: parseFloat(qty) || qty,
+            unit: unit || '',
+            name,
+          }))
+        : [];
+
+    // Steps
+    const stepsQuery = db.exec(
+      `SELECT instructions
+       FROM recipe_steps
+       WHERE recipe_id=${recipeId} AND section_id=${sectionId}
+       ORDER BY step_number;`
+    );
+    const steps =
+      stepsQuery.length > 0 ? stepsQuery[0].values.map((r) => r[0]) : [];
+
+    recipe.sections.push({
+      name: sectionName,
+      ingredients,
+      steps,
+    });
+  });
+
+  // Render recipe
+  renderRecipe(recipe);
+
+  // Stub for editor action button
+  const editorActionBtn = document.getElementById('editorActionBtn');
+  if (editorActionBtn) {
+    editorActionBtn.addEventListener('click', () => {
+      console.log('Editor action button clicked');
+    });
   }
 }

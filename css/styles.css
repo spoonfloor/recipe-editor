@@ -1,26 +1,4 @@
-body {
-  font-family: 'Red Hat Mono', monospace;
-  font-weight: 400; /* eliminate bold */
-  color: black;
-  margin: 0;
-  padding: 0;
-  background: #fff;
-  font-size: 1rem;
-  line-height: 1.5;
-}
-
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-weight: 400; /* bold for headings */
-}
-
-.body-text {
-}
-
+/* --- Body / Layout Defaults --- */
 .centered-container {
   display: flex;
   flex-direction: column;
@@ -29,42 +7,37 @@ h6 {
   height: 100vh;
 }
 
+/* --- Buttons --- */
 .button {
   font-family: inherit;
-  font-size: 1rem;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
   padding: 0.75rem 1.5rem;
   cursor: pointer;
   background: black;
   color: white;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 9999px; /* fully rounded capsule */
+  outline: none; /* remove default outline */
 }
 
+/* --- File Input --- */
 .file-input-hidden {
   display: none;
 }
 
+/* --- Section headings / spacing --- */
 .section-heading {
-  font-size: 1.25rem;
   margin-top: 2rem;
   margin-bottom: 0.5rem;
-}
-
-/* --- Recipe Editor / Prototype Styles --- */
-body.recipe-editor-page {
-  padding: 2rem;
-}
-
-#recipeView h1,
-#recipeView h2 {
-  margin-bottom: 1rem;
-  font-weight: 400;
 }
 
 .section {
   margin-bottom: 2rem;
 }
 
+/* --- Ingredient lines --- */
 .ingredient-line {
   display: flex;
   flex-wrap: wrap;
@@ -72,32 +45,57 @@ body.recipe-editor-page {
   margin-bottom: 0.25rem;
 }
 
-.qty-span {
-  min-width: 2ch;
-  margin-right: 0.25rem; /* space between number and unit */
+/* --- Recipe list item hover --- */
+#recipeList li {
+  cursor: pointer;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
 }
 
-.unit-span {
-  margin: 0 0.5ch; /* extra padding around unit */
-  min-width: 2ch;
+#recipeList li:hover {
+  background-color: #f0f0f0;
 }
 
-.name-span {
-  flex: 1 1 auto;
-}
-
-.instruction-line {
-  margin-bottom: 0.5rem;
-}
-
-.inline-input {
+/* --- App Bar --- */
+.app-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #000;
+  color: #fff;
+  padding: 0.75rem 1.5rem;
   font-family: inherit;
-  font-weight: 400;
-  font-size: 1rem;
-  padding: 0;
-  margin: 0;
-  border: 1px solid #000;
-  border-radius: 2px;
-  text-align: left;
-  box-sizing: content-box;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.app-bar .title {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.app-bar .actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.app-bar .search-bar {
+  flex: 1 1 auto;
+  margin: 0 1rem;
+}
+
+.app-bar .search-bar input {
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid #ccc;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
 }
