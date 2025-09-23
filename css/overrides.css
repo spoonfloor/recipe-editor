@@ -1,35 +1,53 @@
 :root {
   --main-font: 'Red Hat Mono', monospace;
-  --base-font-size: 16px;
-  --base-font-weight: 400; /* Regular */
-  --base-line-height: 1.5;
+  --main-font-size: 16px; /* baseline font size */
+  --main-font-weight: 400; /* normal weight */
 }
 
-/* --- Universal reset --- */
+/* --- Universal Reset --- */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  border: 0;
+  font: inherit;
+  vertical-align: baseline;
   font-family: var(--main-font);
-  font-size: var(--base-font-size);
-  font-weight: var(--base-font-weight);
-  line-height: var(--base-line-height);
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
+  line-height: 1.4;
 }
 
-/* --- HTML & Body --- */
+/* --- HTML5 display defaults --- */
+article,
+aside,
+details,
+figcaption,
+figure,
+footer,
+header,
+hgroup,
+menu,
+nav,
+section,
+main {
+  display: block;
+}
+
+/* --- Body defaults --- */
 html,
 body {
   height: 100%;
-  font-family: var(--main-font);
-  font-size: var(--base-font-size);
-  font-weight: var(--base-font-weight);
-  line-height: var(--base-line-height);
   color: #000;
   background: #fff;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-family: var(--main-font);
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
+  line-height: 1.4;
 }
 
 /* --- Headings & text elements --- */
@@ -40,21 +58,21 @@ h4,
 h5,
 h6,
 p,
-span,
-div,
-li,
 blockquote,
 pre,
 code,
-a,
-input,
-textarea,
-select,
-button {
+ul,
+ol,
+li,
+dl,
+dt,
+dd {
+  margin: 0;
+  padding: 0;
   font-family: var(--main-font);
-  font-size: var(--base-font-size);
-  font-weight: var(--base-font-weight);
-  line-height: var(--base-line-height);
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
+  line-height: 1.4;
 }
 
 /* --- Lists --- */
@@ -67,6 +85,9 @@ ol {
 a {
   color: inherit;
   text-decoration: none;
+  font-family: var(--main-font);
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
 }
 
 /* --- Images --- */
@@ -81,20 +102,32 @@ table {
   border-collapse: collapse;
   border-spacing: 0;
   font-family: var(--main-font);
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
 }
 
-/* --- Form elements inherit baseline --- */
+/* --- Form elements --- */
 input,
 textarea,
 select,
 button {
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
+  all: unset;
+  box-sizing: border-box;
+  font-family: var(--main-font) !important;
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
+  line-height: 1.4;
+  color: inherit;
 }
 
-/* --- Utility classes --- */
+input::placeholder,
+textarea::placeholder {
+  font-family: var(--main-font) !important;
+  font-size: var(--main-font-size);
+  font-weight: var(--main-font-weight);
+}
+
+/* --- Utility layout helpers --- */
 .no-margin {
   margin: 0 !important;
 }

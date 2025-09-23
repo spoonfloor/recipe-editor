@@ -90,12 +90,14 @@
 }
 
 .app-bar .search-bar input {
-  width: 100%;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.25rem;
+  border-radius: 9999px; /* capsule */
+  padding: 0.25rem 1rem;
   border: 1px solid #ccc;
   font-family: inherit;
   font-size: inherit;
   font-weight: inherit;
   line-height: inherit;
+  width: 20ch; /* approximate width for ~longest query */
+  max-width: 100%;
+  box-sizing: border-box;
 }

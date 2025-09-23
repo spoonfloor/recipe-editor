@@ -71,11 +71,13 @@ function loadRecipesPage() {
     });
   }
 
-  // Live search stub
+  // Search input: console only on Enter key
   const searchInput = document.querySelector('.app-bar .search-bar input');
   if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      console.log('Search input changed:', e.target.value);
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        console.log('Search submitted:', e.target.value);
+      }
     });
   }
 }
