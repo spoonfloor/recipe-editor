@@ -145,3 +145,10 @@ textarea::placeholder {
   justify-content: center;
   align-items: center;
 }
+
+.no-select {
+  user-select: none; /* Standard */
+  -webkit-user-select: none; /* Safari/Chrome */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE/Edge */
+}

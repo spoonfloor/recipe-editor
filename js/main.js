@@ -174,4 +174,11 @@ function loadRecipeEditorPage() {
       console.log('Editor action button clicked');
     });
   }
+  // Add this to your main.js or a script in recipeEditor.html
+  const backButton = document.getElementById('backButton');
+  if (backButton) {
+    backButton.addEventListener('click', () => {
+      window.location.href = 'recipes.html';
+    });
+  }
 }
