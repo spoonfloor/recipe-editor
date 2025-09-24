@@ -1,47 +1,63 @@
+// Replace the old formatRecipe with this version
 function formatRecipe(db, recipeId) {
-  // --- Load recipe title ---
+  // Title
   const recipeTitleQuery = db.exec(
     `SELECT title FROM recipes WHERE ID=${recipeId};`
   );
-  const title =
-    recipeTitleQuery.length > 0 ? recipeTitleQuery[0].values[0][0] : 'Untitled';
+  const title = recipeTitleQuery.length
+    ? recipeTitleQuery[0].values[0][0]
+    : 'Untitled';
 
-  // --- Load sections ---
+  // Sections (may be empty)
   const sectionsQuery = db.exec(
     `SELECT ID, name FROM recipe_sections WHERE recipe_id=${recipeId} ORDER BY sort_order;`
   );
-  const recipeSections =
-    sectionsQuery.length > 0 ? sectionsQuery[0].values : [];
+  const sectionRows = sectionsQuery.length ? sectionsQuery[0].values : [];
 
-  const sections = recipeSections.map(([sectionId, sectionName]) => {
-    // Ingredients
-    const ingQuery = db.exec(
+  // Helpers
+  function loadIngredients(whereClause) {
+    const q = db.exec(
       `SELECT rim.quantity, rim.unit, i.name
        FROM recipe_ingredient_map rim
        JOIN ingredients i ON rim.ingredient_id = i.ID
-       WHERE rim.recipe_id=${recipeId} AND rim.section_id=${sectionId};`
+       WHERE rim.recipe_id=${recipeId} AND ${whereClause}
+       ORDER BY rim.ID;`
     );
-    const ingredients =
-      ingQuery.length > 0
-        ? ingQuery[0].values.map(([qty, unit, name]) => ({
-            quantity: parseFloat(qty) || qty,
-            unit: unit || '',
-            name,
-          }))
-        : [];
+    return q.length
+      ? q[0].values.map(([qty, unit, name]) => ({
+          quantity: parseFloat(qty) || qty,
+          unit: unit || '',
+          name,
+        }))
+      : [];
+  }
 
-    // Steps
-    const stepsQuery = db.exec(
+  function loadSteps(whereClause) {
+    const q = db.exec(
       `SELECT instructions
        FROM recipe_steps
-       WHERE recipe_id=${recipeId} AND section_id=${sectionId}
+       WHERE recipe_id=${recipeId} AND ${whereClause}
        ORDER BY step_number;`
     );
-    const steps =
-      stepsQuery.length > 0 ? stepsQuery[0].values.map((r) => r[0]) : [];
+    return q.length ? q[0].values.map((r) => r[0]) : [];
+  }
 
-    return { name: sectionName, ingredients, steps };
-  });
+  // Build sections
+  let sections = sectionRows.map(([id, name]) => ({
+    name,
+    ingredients: loadIngredients(`rim.section_id=${id}`),
+    steps: loadSteps(`section_id=${id}`),
+  }));
+
+  // Fallback for global (no-section) items
+  const globalIngredients = loadIngredients(`rim.section_id IS NULL`);
+  const globalSteps = loadSteps(`section_id IS NULL`);
+  if (globalIngredients.length || globalSteps.length) {
+    sections = [
+      { name: null, ingredients: globalIngredients, steps: globalSteps },
+      ...sections,
+    ];
+  }
 
   return { title, sections };
 }

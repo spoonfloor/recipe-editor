@@ -7,27 +7,23 @@ function renderIngredient(line) {
   div.dataset.unit = line.unit;
   div.dataset.name = line.name;
 
-  const qtySpan = document.createElement('span');
-  qtySpan.className = 'qty-span';
-  qtySpan.textContent = decimalToFractionDisplay(line.quantity);
-  qtySpan.dataset.value = line.quantity;
+  const textSpan = document.createElement('span');
+  textSpan.className = 'ingredient-text';
 
-  const unitSpan = document.createElement('span');
-  unitSpan.className = 'unit-span';
-  unitSpan.textContent = line.unit;
+  // Show quantity as fraction if numeric
+  let qtyDisplay = line.quantity;
+  if (!isNaN(parseFloat(line.quantity))) {
+    qtyDisplay = decimalToFractionDisplay(parseFloat(line.quantity));
+  }
+  textSpan.textContent = [qtyDisplay, line.unit, line.name]
+    .filter(Boolean)
+    .join(' ');
 
-  const nameSpan = document.createElement('span');
-  nameSpan.className = 'name-span';
-  nameSpan.textContent = line.name;
+  // Save raw quantity separately for editing
+  textSpan.dataset.rawQuantity = line.quantity || '';
 
-  div.appendChild(qtySpan);
-  div.appendChild(unitSpan);
-  div.appendChild(nameSpan);
-
-  makeEditable(qtySpan, 'qty');
-  makeEditable(unitSpan, 'text');
-  makeEditable(nameSpan, 'text');
-
+  makeEditable(textSpan, 'text');
+  div.appendChild(textSpan);
   return div;
 }
 
