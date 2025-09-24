@@ -15,7 +15,7 @@
   line-height: inherit;
   padding: 0.75rem 1.5rem;
   cursor: pointer;
-  background: var(--theme-primary); /* was black */
+  background: var(--theme-secondary); /* was black */
   color: white;
   border: none;
   border-radius: 9999px;
@@ -48,7 +48,7 @@
 /* --- Recipe list item hover --- */
 #recipeList {
   width: 100%;
-  max-width: 600px; /* adjust to your preference */
+  max-width: calc(600px - 18px); /* adjust to your preference */
   margin: 1rem auto; /* center horizontally */
   padding: 0;
 }
@@ -78,16 +78,9 @@
   align-items: center;
 }
 
-/* Back button */
-.app-bar .back-button {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  color: #fff;
-}
-
-.app-bar .back-button .material-symbols-outlined {
-  font-size: 2rem;
+/* Title */
+.title {
+  color: white;
 }
 
 /* Actions */
@@ -117,7 +110,7 @@
 
 .app-bar-search-layer .search-bar input {
   width: 100%;
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.5rem;
   font-family: inherit;
   font-size: 1.25rem;
   font-weight: inherit;
@@ -134,4 +127,10 @@
 .app-bar-search-layer .search-bar input::placeholder {
   color: #fff;
   opacity: 1;
+}
+
+.title-and-back {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
