@@ -13,17 +13,15 @@ initSqlJs({
   }
 });
 
-// Welcome page logic: load DB and redirect
+// Welcome page logic
 const loadDbBtn = document.getElementById('loadDbBtn');
 const dbLoader = document.getElementById('dbLoader');
 
 if (loadDbBtn && dbLoader) {
   loadDbBtn.addEventListener('click', () => dbLoader.click());
-
   dbLoader.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = () => {
       const Uints = new Uint8Array(reader.result);
@@ -63,7 +61,7 @@ function loadRecipesPage() {
     });
   }
 
-  // Stub for recipes action button
+  // Recipes action button stub
   const recipesActionBtn = document.getElementById('recipesActionBtn');
   if (recipesActionBtn) {
     recipesActionBtn.addEventListener('click', () => {
@@ -71,8 +69,10 @@ function loadRecipesPage() {
     });
   }
 
-  // Search input: console only on Enter key
-  const searchInput = document.querySelector('.app-bar .search-bar input');
+  // --- Search bar listener ---
+  const searchInput = document.querySelector(
+    '.app-bar-wrapper .search-bar input'
+  );
   if (searchInput) {
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -101,7 +101,7 @@ function loadRecipeEditorPage() {
     return;
   }
 
-  // --- Load recipe title ---
+  // Load recipe title
   const recipeTitleQuery = db.exec(
     `SELECT title FROM recipes WHERE ID=${recipeId};`
   );
@@ -116,22 +116,15 @@ function loadRecipeEditorPage() {
   const appBarTitle = document.getElementById('recipeTitle');
   if (appBarTitle) appBarTitle.textContent = recipeTitle;
 
-  // --- Load sections ---
+  // Load sections, ingredients, steps...
   const sectionsQuery = db.exec(
     `SELECT ID, name FROM recipe_sections WHERE recipe_id=${recipeId} ORDER BY sort_order;`
   );
-
   const recipeSections =
     sectionsQuery.length > 0 ? sectionsQuery[0].values : [];
+  const recipe = { title: recipeTitle, sections: [] };
 
-  const recipe = {
-    title: recipeTitle,
-    sections: [],
-  };
-
-  // For each section, load ingredients and steps
   recipeSections.forEach(([sectionId, sectionName]) => {
-    // Ingredients
     const ingQuery = db.exec(
       `SELECT rim.quantity, rim.unit, i.name
        FROM recipe_ingredient_map rim
@@ -147,7 +140,6 @@ function loadRecipeEditorPage() {
           }))
         : [];
 
-    // Steps
     const stepsQuery = db.exec(
       `SELECT instructions
        FROM recipe_steps
@@ -157,24 +149,20 @@ function loadRecipeEditorPage() {
     const steps =
       stepsQuery.length > 0 ? stepsQuery[0].values.map((r) => r[0]) : [];
 
-    recipe.sections.push({
-      name: sectionName,
-      ingredients,
-      steps,
-    });
+    recipe.sections.push({ name: sectionName, ingredients, steps });
   });
 
-  // Render recipe
   renderRecipe(recipe);
 
-  // Stub for editor action button
+  // Editor action button stub
   const editorActionBtn = document.getElementById('editorActionBtn');
   if (editorActionBtn) {
     editorActionBtn.addEventListener('click', () => {
       console.log('Editor action button clicked');
     });
   }
-  // Add this to your main.js or a script in recipeEditor.html
+
+  // Back button
   const backButton = document.getElementById('backButton');
   if (backButton) {
     backButton.addEventListener('click', () => {
