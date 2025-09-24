@@ -1,3 +1,12 @@
+:root {
+  --main-font: 'Red Hat Mono', monospace;
+  --main-font-size: 16px;
+  --main-font-weight: 400;
+  --theme-primary: #6d49ff;
+  --theme-secondary: #7f5cff;
+  --app-bar-height: 64px;
+}
+
 /* --- Body / Layout Defaults --- */
 .centered-container {
   display: flex;
@@ -5,6 +14,9 @@
   align-items: center;
   justify-content: center;
   height: 100vh;
+  gap: 22px;
+  background: var(--theme-primary);
+  color: white;
 }
 
 /* --- Buttons --- */
@@ -13,7 +25,7 @@
   font-size: inherit;
   font-weight: inherit;
   line-height: inherit;
-  padding: 0.75rem 1.5rem;
+  padding: 0 1.5rem;
   cursor: pointer;
   background: var(--theme-secondary); /* was black */
   color: white;
@@ -21,6 +33,7 @@
   border-radius: 9999px;
   outline: none;
   cursor: pointer;
+  height: 44px;
 }
 
 /* --- File Input --- */
@@ -49,8 +62,8 @@
 /* --- Recipe list item hover --- */
 #recipeList {
   width: 100%;
-  max-width: calc(600px - 18px); /* adjust to your preference */
-  margin: 1rem auto; /* center horizontally */
+  max-width: calc(600px - 22px); /* adjust to your preference */
+  margin: 22px auto; /* center horizontally */
   padding: 0;
 }
 
@@ -66,10 +79,17 @@
 
 /* --- App Bar Wrapper --- */
 .app-bar-wrapper {
-  position: relative;
+  position: fixed;
   background: var(--theme-primary);
+  width: 100vw;
+  height: var(--app-bar-height);
+  top: 0;
+  left: 0;
   padding: 0.75rem 1.5rem;
   z-index: 1000;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 /* --- Left/Right Elements Layer --- */
@@ -77,6 +97,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
 }
 
 /* Title */
@@ -111,8 +132,8 @@
 
 .app-bar-search-layer .search-bar input {
   width: 100%;
-  padding: 0.6rem 1.5rem;
-  font-family: inherit;
+  height: 44px;
+  padding: 0 1.5rem;
   font-weight: inherit;
   line-height: inherit;
   border: none;
@@ -163,4 +184,24 @@
 
 .clear-search:hover {
   color: white;
+}
+
+.recipe-list-wrapper {
+  position: absolute;
+  top: var(--app-bar-height);
+  left: 0;
+  width: 100vw;
+}
+
+.recipe-wrapper {
+  position: absolute;
+  top: var(--app-bar-height);
+  left: 0;
+  width: 100vw;
+}
+
+#recipeView {
+  width: 100%;
+  max-width: 680px;
+  margin: 34px auto;
 }

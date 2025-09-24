@@ -1,12 +1,3 @@
-:root {
-  --main-font: 'Red Hat Mono', monospace;
-  --main-font-size: 16px;
-  --main-font-weight: 400;
-
-  --theme-primary: #6d49ff;
-  --theme-secondary: #7f5cff; /* new */
-}
-
 /* --- Universal Reset --- */
 *,
 *::before,
