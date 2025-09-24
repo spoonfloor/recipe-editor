@@ -39,9 +39,11 @@ function loadRecipesPage() {
     alert('No database loaded. Please go back to the welcome page.');
     return;
   }
+
   const Uints = new Uint8Array(JSON.parse(stored));
   const db = new SQL.Database(Uints);
 
+  // --- Load recipes ---
   const recipes = db.exec(
     'SELECT ID, title FROM recipes ORDER BY title COLLATE NOCASE;'
   );
@@ -61,7 +63,7 @@ function loadRecipesPage() {
     });
   }
 
-  // Recipes action button stub
+  // --- Recipes action button stub ---
   const recipesActionBtn = document.getElementById('recipesActionBtn');
   if (recipesActionBtn) {
     recipesActionBtn.addEventListener('click', () => {
@@ -69,14 +71,30 @@ function loadRecipesPage() {
     });
   }
 
-  // --- Search bar listener ---
-  const searchInput = document.querySelector(
-    '.app-bar-wrapper .search-bar input'
-  );
-  if (searchInput) {
+  // --- Search bar logic with clear button ---
+  const searchInput = document.getElementById('recipeSearch');
+  const clearBtn = document.querySelector('.clear-search');
+
+  if (searchInput && clearBtn) {
+    // Hide clear button initially
+    clearBtn.style.display = 'none';
+
+    // Show/hide clear button when typing
+    searchInput.addEventListener('input', () => {
+      clearBtn.style.display = searchInput.value ? 'inline' : 'none';
+    });
+
+    // Clear input on × click
+    clearBtn.addEventListener('click', () => {
+      searchInput.value = '';
+      clearBtn.style.display = 'none';
+      searchInput.focus();
+    });
+
+    // Log search on Enter key
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        console.log('Search submitted:', e.target.value);
+        console.log('Search submitted:', searchInput.value);
       }
     });
   }

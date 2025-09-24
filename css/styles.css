@@ -139,3 +139,28 @@
   cursor: pointer;
   color: white;
 }
+
+.search-bar {
+  position: relative;
+  display: inline-block;
+}
+
+.search-bar input {
+  padding-right: 20px; /* make space for the × */
+}
+
+.clear-search {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 24px;
+  color: hsl(252, 63%, 78%);
+  user-select: none;
+  display: none; /* hidden by default */
+}
+
+.clear-search:hover {
+  color: white;
+}
