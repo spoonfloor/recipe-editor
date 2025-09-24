@@ -134,42 +134,10 @@ function loadRecipeEditorPage() {
   const appBarTitle = document.getElementById('recipeTitle');
   if (appBarTitle) appBarTitle.textContent = recipeTitle;
 
-  // Load sections, ingredients, steps...
-  const sectionsQuery = db.exec(
-    `SELECT ID, name FROM recipe_sections WHERE recipe_id=${recipeId} ORDER BY sort_order;`
-  );
-  const recipeSections =
-    sectionsQuery.length > 0 ? sectionsQuery[0].values : [];
-  const recipe = { title: recipeTitle, sections: [] };
+  // --- Use formatter to convert DB data to human-readable recipe ---
+  const recipe = formatRecipe(db, recipeId);
 
-  recipeSections.forEach(([sectionId, sectionName]) => {
-    const ingQuery = db.exec(
-      `SELECT rim.quantity, rim.unit, i.name
-       FROM recipe_ingredient_map rim
-       JOIN ingredients i ON rim.ingredient_id = i.ID
-       WHERE rim.recipe_id=${recipeId} AND rim.section_id=${sectionId};`
-    );
-    const ingredients =
-      ingQuery.length > 0
-        ? ingQuery[0].values.map(([qty, unit, name]) => ({
-            quantity: parseFloat(qty) || qty,
-            unit: unit || '',
-            name,
-          }))
-        : [];
-
-    const stepsQuery = db.exec(
-      `SELECT instructions
-       FROM recipe_steps
-       WHERE recipe_id=${recipeId} AND section_id=${sectionId}
-       ORDER BY step_number;`
-    );
-    const steps =
-      stepsQuery.length > 0 ? stepsQuery[0].values.map((r) => r[0]) : [];
-
-    recipe.sections.push({ name: sectionName, ingredients, steps });
-  });
-
+  // Render recipe
   renderRecipe(recipe);
 
   // Editor action button stub
