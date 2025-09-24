@@ -13,13 +13,22 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/sql-wasm.js"></script>
   </head>
   <body class="recipes-page">
-    <div class="app-bar">
-      <div class="title">Recipes</div>
-      <div class="search-bar">
-        <input type="text" placeholder="Search" />
+    <div class="app-bar-wrapper">
+      <!-- Centered search bar layer -->
+      <div class="app-bar-search-layer">
+        <div class="search-bar">
+          <input type="text" placeholder="Search" />
+        </div>
       </div>
-      <div class="actions">
-        <button class="button" id="recipesActionBtn">Action</button>
+
+      <!-- Left/Right elements layer -->
+      <div class="app-bar-elements-layer">
+        <div class="back-button" id="backButton">
+          <span class="material-symbols-outlined">arrow_back</span>
+        </div>
+        <div class="actions">
+          <button class="button" id="recipesActionBtn">Action</button>
+        </div>
       </div>
     </div>
 

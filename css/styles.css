@@ -15,11 +15,11 @@
   line-height: inherit;
   padding: 0.75rem 1.5rem;
   cursor: pointer;
-  background: black;
+  background: var(--theme-primary); /* was black */
   color: white;
   border: none;
-  border-radius: 9999px; /* fully rounded capsule */
-  outline: none; /* remove default outline */
+  border-radius: 9999px;
+  outline: none;
 }
 
 /* --- File Input --- */
@@ -46,6 +46,13 @@
 }
 
 /* --- Recipe list item hover --- */
+#recipeList {
+  width: 100%;
+  max-width: 600px; /* adjust to your preference */
+  margin: 1rem auto; /* center horizontally */
+  padding: 0;
+}
+
 #recipeList li {
   cursor: pointer;
   padding: 0.5rem 0.75rem;
@@ -56,48 +63,75 @@
   background-color: #f0f0f0;
 }
 
-/* --- App Bar --- */
-.app-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #000;
-  color: #fff;
+/* --- App Bar Wrapper --- */
+.app-bar-wrapper {
+  position: relative;
+  background: var(--theme-primary);
   padding: 0.75rem 1.5rem;
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
-  position: sticky;
-  top: 0;
   z-index: 1000;
 }
 
-.app-bar .title {
-  font-size: inherit;
-  font-weight: inherit;
+/* --- Left/Right Elements Layer --- */
+.app-bar-elements-layer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
+/* Back button */
+.app-bar .back-button {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: #fff;
+}
+
+.app-bar .back-button .material-symbols-outlined {
+  font-size: 2rem;
+}
+
+/* Actions */
 .app-bar .actions {
   display: flex;
   gap: 1rem;
   align-items: center;
 }
 
-.app-bar .search-bar {
-  flex: 1 1 auto;
-  margin: 0 1rem;
+/* --- Centered Search Bar Layer (overlapping) --- */
+.app-bar-search-layer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* allow clicks through empty space */
 }
 
-.app-bar .search-bar input {
-  border-radius: 9999px; /* capsule */
-  padding: 0.25rem 1rem;
-  border: 1px solid #ccc;
+.app-bar-search-layer .search-bar {
+  pointer-events: all; /* allow interaction with input */
+  width: 100%;
+  max-width: 600px; /* match recipe list */
+}
+
+.app-bar-search-layer .search-bar input {
+  width: 100%;
+  padding: 0.75rem 1.5rem;
   font-family: inherit;
-  font-size: inherit;
+  font-size: 1.25rem;
   font-weight: inherit;
   line-height: inherit;
-  width: 20ch; /* approximate width for ~longest query */
-  max-width: 100%;
+  border: none;
+  border-radius: 9999px;
   box-sizing: border-box;
+  background-color: var(--theme-secondary);
+  color: #fff;
+  text-align: left;
+}
+
+/* White placeholder text */
+.app-bar-search-layer .search-bar input::placeholder {
+  color: #fff;
+  opacity: 1;
 }
