@@ -47,9 +47,9 @@
   margin-bottom: 0.5rem;
 }
 
-.section {
-  margin-bottom: 2rem;
-}
+/* .section { */
+/* margin-bottom: 2rem; */
+/* } */
 
 /* --- Ingredient lines --- */
 .ingredient-line {
@@ -204,4 +204,18 @@
   width: 100%;
   max-width: 680px;
   margin: 34px auto;
+}
+
+/* Proper hanging indent for steps */
+.instruction-line {
+  display: flex;
+  align-items: flex-start;
+}
+
+.instruction-line .step-num {
+  flex: 0 0 2em; /* reserve fixed width for numbers */
+}
+
+.instruction-line .step-text {
+  flex: 1;
 }

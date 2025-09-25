@@ -4,10 +4,14 @@ function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
 
-  const title = document.createElement('h1');
-  title.textContent = recipe.title;
-  makeEditable(title, 'text');
-  container.appendChild(title);
+  // Put recipe title in app bar, sentence case
+  const appBarTitle = document.getElementById('recipeTitle');
+  if (appBarTitle) {
+    const sentenceCase =
+      recipe.title.charAt(0).toUpperCase() +
+      recipe.title.slice(1).toLowerCase();
+    appBarTitle.textContent = sentenceCase;
+  }
 
   recipe.sections.forEach((section) => {
     const secDiv = document.createElement('div');
@@ -38,8 +42,30 @@ function renderRecipe(recipe) {
       section.steps.forEach((step, index) => {
         const instr = document.createElement('div');
         instr.className = 'instruction-line';
-        instr.textContent = index + 1 + '. ' + step;
-        makeEditable(instr, 'text');
+
+        if (section.steps.length > 1) {
+          instr.classList.add('numbered');
+
+          const num = document.createElement('span');
+          num.className = 'step-num';
+          num.textContent = index + 1 + '.';
+
+          const text = document.createElement('span');
+          text.className = 'step-text';
+          text.textContent = step;
+          makeEditable(text, 'text');
+
+          instr.appendChild(num);
+          instr.appendChild(text);
+        } else {
+          const text = document.createElement('span');
+          text.className = 'step-text';
+          text.textContent = step;
+          makeEditable(text, 'text');
+
+          instr.appendChild(text);
+        }
+
         secDiv.appendChild(instr);
       });
     }
