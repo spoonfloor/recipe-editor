@@ -1,4 +1,3 @@
-// Replace the old formatRecipe with this version
 function formatRecipe(db, recipeId) {
   // Title
   const recipeTitleQuery = db.exec(
@@ -45,6 +44,7 @@ function formatRecipe(db, recipeId) {
   // Build sections
   let sections = sectionRows.map(([id, name]) => ({
     name,
+    contexts: [], // default empty; contexts are handled in extended schema if needed
     ingredients: loadIngredients(`rim.section_id=${id}`),
     steps: loadSteps(`section_id=${id}`),
   }));
@@ -54,7 +54,12 @@ function formatRecipe(db, recipeId) {
   const globalSteps = loadSteps(`section_id IS NULL`);
   if (globalIngredients.length || globalSteps.length) {
     sections = [
-      { name: null, ingredients: globalIngredients, steps: globalSteps },
+      {
+        name: null,
+        contexts: [], // explicitly empty so renderer can treat it as global
+        ingredients: globalIngredients,
+        steps: globalSteps,
+      },
       ...sections,
     ];
   }

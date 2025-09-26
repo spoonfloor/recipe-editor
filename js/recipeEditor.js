@@ -4,72 +4,101 @@ function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
 
-  // Put recipe title in app bar, sentence case
-  const appBarTitle = document.getElementById('recipeTitle');
-  if (appBarTitle) {
-    const sentenceCase =
-      recipe.title.charAt(0).toUpperCase() +
-      recipe.title.slice(1).toLowerCase();
-    appBarTitle.textContent = sentenceCase;
+  // Title now handled in app bar, not here
+
+  // Ingredients section
+  if (recipe.sections.some((sec) => sec.ingredients.length)) {
+    const ingHeader = document.createElement('div');
+    ingHeader.className = 'section-header';
+    ingHeader.textContent = 'Ingredients';
+    container.appendChild(ingHeader);
+
+    recipe.sections.forEach((section) => {
+      if (
+        section.ingredients.length &&
+        (section.contexts.includes('ingredients') ||
+          section.contexts.length === 0)
+      ) {
+        if (section.name) {
+          const subHeader = document.createElement('div');
+          subHeader.className = 'subsection-header';
+          subHeader.textContent = section.name;
+          makeEditable(subHeader, 'text');
+          container.appendChild(subHeader);
+        }
+        section.ingredients.forEach((ing) => {
+          container.appendChild(renderIngredient(ing));
+        });
+      }
+    });
   }
 
-  recipe.sections.forEach((section) => {
-    const secDiv = document.createElement('div');
-    secDiv.className = 'section';
+  // Instructions section
+  if (
+    recipe.sections.some(
+      (sec) => sec.steps.length || (!sec.name && sec.ingredients.length)
+    )
+  ) {
+    const stepHeader = document.createElement('div');
+    stepHeader.className = 'section-header';
+    stepHeader.textContent = 'Instructions';
+    container.appendChild(stepHeader);
 
-    if (section.name) {
-      const header = document.createElement('h2');
-      header.textContent = section.name;
-      makeEditable(header, 'text');
-      secDiv.appendChild(header);
-    }
-
-    if (section.ingredients.length) {
-      const ingHeader = document.createElement('h3');
-      ingHeader.textContent = 'Ingredients';
-      secDiv.appendChild(ingHeader);
-
-      section.ingredients.forEach((ing) => {
-        secDiv.appendChild(renderIngredient(ing));
+    // First: render global (NULL) ingredients before any steps
+    const globalSection = recipe.sections.find(
+      (sec) => !sec.name && sec.ingredients.length
+    );
+    if (globalSection) {
+      globalSection.ingredients.forEach((ing) => {
+        container.appendChild(renderIngredient(ing));
       });
     }
 
-    if (section.steps.length) {
-      const stepHeader = document.createElement('h3');
-      stepHeader.textContent = 'Steps';
-      secDiv.appendChild(stepHeader);
-
-      section.steps.forEach((step, index) => {
-        const instr = document.createElement('div');
-        instr.className = 'instruction-line';
-
-        if (section.steps.length > 1) {
-          instr.classList.add('numbered');
-
-          const num = document.createElement('span');
-          num.className = 'step-num';
-          num.textContent = index + 1 + '.';
-
-          const text = document.createElement('span');
-          text.className = 'step-text';
-          text.textContent = step;
-          makeEditable(text, 'text');
-
-          instr.appendChild(num);
-          instr.appendChild(text);
-        } else {
-          const text = document.createElement('span');
-          text.className = 'step-text';
-          text.textContent = step;
-          makeEditable(text, 'text');
-
-          instr.appendChild(text);
+    // Then: loop through sections for steps + named subsections
+    recipe.sections.forEach((section) => {
+      if (
+        section.steps.length &&
+        (section.contexts.includes('instructions') ||
+          section.contexts.length === 0)
+      ) {
+        if (section.name) {
+          const subHeader = document.createElement('div');
+          subHeader.className = 'subsection-header';
+          subHeader.textContent = section.name;
+          makeEditable(subHeader, 'text');
+          container.appendChild(subHeader);
         }
 
-        secDiv.appendChild(instr);
-      });
-    }
+        section.steps.forEach((step, index) => {
+          const instr = document.createElement('div');
+          instr.className = 'instruction-line';
 
-    container.appendChild(secDiv);
-  });
+          if (section.steps.length > 1) {
+            instr.classList.add('numbered');
+
+            const num = document.createElement('span');
+            num.className = 'step-num';
+            num.textContent = index + 1 + '.';
+
+            const text = document.createElement('span');
+            text.className = 'step-text';
+            text.textContent = step;
+            makeEditable(text, 'text');
+
+            instr.appendChild(num);
+            instr.appendChild(text);
+          } else {
+            const text = document.createElement('span');
+            text.className = 'step-text';
+            text.textContent = step;
+            makeEditable(text, 'text');
+
+            instr.appendChild(text);
+          }
+
+          container.appendChild(instr);
+        });
+      }
+    });
+  }
 }

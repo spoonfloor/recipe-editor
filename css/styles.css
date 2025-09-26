@@ -1,10 +1,11 @@
 :root {
   --main-font: 'Red Hat Mono', monospace;
-  --main-font-size: 16px;
-  --main-font-weight: 400;
+  --body-font-size: 16px;
+  --body-font-weight: 400;
   --theme-primary: #6d49ff;
   --theme-secondary: #7f5cff;
   --app-bar-height: 64px;
+  --header-font-size: 18px;
 }
 
 /* --- Body / Layout Defaults --- */
@@ -218,4 +219,13 @@
 
 .instruction-line .step-text {
   flex: 1;
+}
+
+.section-header {
+  color: black;
+  font-size: var(--header-font-size);
+}
+
+.subsection-header {
+  color: var(--theme-primary);
 }
