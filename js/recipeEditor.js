@@ -44,16 +44,6 @@ function renderRecipe(recipe) {
     stepHeader.textContent = 'Instructions';
     container.appendChild(stepHeader);
 
-    // First: render global (NULL) ingredients before any steps
-    const globalSection = recipe.sections.find(
-      (sec) => !sec.name && sec.ingredients.length
-    );
-    if (globalSection) {
-      globalSection.ingredients.forEach((ing) => {
-        container.appendChild(renderIngredient(ing));
-      });
-    }
-
     // Then: loop through sections for steps + named subsections
     recipe.sections.forEach((section) => {
       if (

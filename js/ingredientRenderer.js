@@ -15,9 +15,34 @@ function renderIngredient(line) {
   if (!isNaN(parseFloat(line.quantity))) {
     qtyDisplay = decimalToFractionDisplay(parseFloat(line.quantity));
   }
-  textSpan.textContent = [qtyDisplay, line.unit, line.name]
-    .filter(Boolean)
-    .join(' ');
+
+  // --- Build main ingredient text ---
+  let baseName = line.variant ? line.variant : line.name;
+  let mainText = [qtyDisplay, line.unit, baseName].filter(Boolean).join(' ');
+
+  // --- Handle substitutes (join with " or ") ---
+  if (line.substitutes && line.substitutes.length > 0) {
+    const subsText = line.substitutes.map((sub) => {
+      const subBase = sub.variant ? sub.variant : sub.name;
+      return [sub.quantity, sub.unit, subBase].filter(Boolean).join(' ');
+    });
+    mainText += ' or ' + subsText.join(' or ');
+  }
+
+  // --- Parenthetical handling (prepNotes + optional) ---
+  if (line.prepNotes && line.isOptional) {
+    if (line.prepNotes.toLowerCase().includes('garnish')) {
+      mainText += ` (optional garnish)`;
+    } else {
+      mainText += ` (optional ${line.prepNotes})`;
+    }
+  } else if (line.prepNotes) {
+    mainText += ` (${line.prepNotes})`;
+  } else if (line.isOptional) {
+    mainText += ` (optional)`;
+  }
+
+  textSpan.textContent = mainText;
 
   // Save raw quantity separately for editing
   textSpan.dataset.rawQuantity = line.quantity || '';

@@ -5,7 +5,7 @@
   --theme-primary: #6d49ff;
   --theme-secondary: #7f5cff;
   --app-bar-height: 64px;
-  --header-font-size: 18px;
+  --header-font-size: 16.5px;
 }
 
 /* --- Body / Layout Defaults --- */
@@ -204,7 +204,7 @@
 #recipeView {
   width: 100%;
   max-width: 680px;
-  margin: 34px auto;
+  margin: 40px auto;
 }
 
 /* Proper hanging indent for steps */
@@ -224,8 +224,12 @@
 .section-header {
   color: black;
   font-size: var(--header-font-size);
+  margin-top: 30px;
+  margin-bottom: 16px;
 }
 
 .subsection-header {
   color: var(--theme-primary);
+  margin-top: 20px;
+  margin-bottom: 12px;
 }

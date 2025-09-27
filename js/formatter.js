@@ -16,19 +16,54 @@ function formatRecipe(db, recipeId) {
   // Helpers
   function loadIngredients(whereClause) {
     const q = db.exec(
-      `SELECT rim.quantity, rim.unit, i.name
+      `SELECT rim.ID,
+              rim.quantity,
+              rim.unit,
+              i.name,
+              i.variant,
+              rim.prep_notes,
+              rim.is_optional
        FROM recipe_ingredient_map rim
        JOIN ingredients i ON rim.ingredient_id = i.ID
        WHERE rim.recipe_id=${recipeId} AND ${whereClause}
        ORDER BY rim.ID;`
     );
-    return q.length
-      ? q[0].values.map(([qty, unit, name]) => ({
+
+    if (!q.length) return [];
+
+    return q[0].values.map(
+      ([rimId, qty, unit, name, variant, prepNotes, isOptional]) => {
+        // Fetch substitutes for this ingredient
+        const subsQ = db.exec(
+          `SELECT r.quantity,
+                  r.unit,
+                  i.name,
+                  i.variant
+           FROM recipe_ingredient_substitutes r
+           JOIN ingredients i ON r.ingredient_id = i.ID
+           WHERE r.recipe_ingredient_id=${rimId};`
+        );
+
+        const substitutes = subsQ.length
+          ? subsQ[0].values.map(([sQty, sUnit, sName, sVariant]) => ({
+              quantity: parseFloat(sQty) || sQty,
+              unit: sUnit || '',
+              name: sName,
+              variant: sVariant || '',
+            }))
+          : [];
+
+        return {
           quantity: parseFloat(qty) || qty,
           unit: unit || '',
           name,
-        }))
-      : [];
+          variant: variant || '',
+          prepNotes: prepNotes || '',
+          isOptional: !!isOptional,
+          substitutes,
+        };
+      }
+    );
   }
 
   function loadSteps(whereClause) {
