@@ -16,30 +16,61 @@ function renderIngredient(line) {
     qtyDisplay = decimalToFractionDisplay(parseFloat(line.quantity));
   }
 
-  // --- Build main ingredient text ---
-  let baseName = line.variant ? line.variant : line.name;
-  let mainText = [qtyDisplay, line.unit, baseName].filter(Boolean).join(' ');
+  // --- Build base name (variant + name) ---
+  let baseName;
+  if (line.variant) {
+    baseName = `${line.variant} ${line.name}`.trim();
+  } else {
+    baseName = line.name;
+  }
+
+  // --- Decide if quantity is numeric or free-text ---
+  const isNumericQty = !isNaN(parseFloat(line.quantity));
+
+  let mainText;
+  if (isNumericQty && line.quantity !== '') {
+    // Handle pluralization of unit
+    let unitText = line.unit || '';
+    const numericVal = parseFloat(line.quantity);
+    if (unitText && numericVal && numericVal !== 1) {
+      if (!unitText.endsWith('s')) {
+        unitText = unitText + 's';
+      }
+    }
+    mainText = [qtyDisplay, unitText, baseName].filter(Boolean).join(' ');
+  } else if (line.quantity) {
+    // Free-text quantity like "to taste" or "as needed"
+    mainText = [line.prepNotes, baseName, line.quantity]
+      .filter(Boolean)
+      .join(' ');
+    // Clear prepNotes so we don’t repeat it later
+    line.prepNotes = '';
+  } else {
+    mainText = [line.unit, baseName].filter(Boolean).join(' ');
+  }
+
+  // --- Append prep notes (if still left) ---
+  if (line.prepNotes) {
+    mainText += `, ${line.prepNotes}`;
+  }
+
+  // --- Build parenthetical collector ---
+  let parenBits = [];
+  if (line.parentheticalNote) parenBits.push(line.parentheticalNote);
+  if (line.isOptional) parenBits.push('optional');
+  if (parenBits.length > 0) {
+    mainText += ` (${parenBits.join(', ')})`;
+  }
 
   // --- Handle substitutes (join with " or ") ---
   if (line.substitutes && line.substitutes.length > 0) {
     const subsText = line.substitutes.map((sub) => {
-      const subBase = sub.variant ? sub.variant : sub.name;
+      const subBase = sub.variant
+        ? `${sub.variant} ${sub.name}`.trim()
+        : sub.name;
       return [sub.quantity, sub.unit, subBase].filter(Boolean).join(' ');
     });
     mainText += ' or ' + subsText.join(' or ');
-  }
-
-  // --- Parenthetical handling (prepNotes + optional) ---
-  if (line.prepNotes && line.isOptional) {
-    if (line.prepNotes.toLowerCase().includes('garnish')) {
-      mainText += ` (optional garnish)`;
-    } else {
-      mainText += ` (optional ${line.prepNotes})`;
-    }
-  } else if (line.prepNotes) {
-    mainText += ` (${line.prepNotes})`;
-  } else if (line.isOptional) {
-    mainText += ` (optional)`;
   }
 
   textSpan.textContent = mainText;

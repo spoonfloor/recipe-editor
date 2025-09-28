@@ -16,23 +16,35 @@ function formatRecipe(db, recipeId) {
   // Helpers
   function loadIngredients(whereClause) {
     const q = db.exec(
-      `SELECT rim.ID,
-              rim.quantity,
-              rim.unit,
-              i.name,
-              i.variant,
-              rim.prep_notes,
-              rim.is_optional
-       FROM recipe_ingredient_map rim
-       JOIN ingredients i ON rim.ingredient_id = i.ID
-       WHERE rim.recipe_id=${recipeId} AND ${whereClause}
-       ORDER BY rim.ID;`
+      `
+      SELECT rim.ID,
+             rim.quantity,
+             rim.unit,
+             i.name,
+             i.variant,
+             rim.prep_notes,
+             rim.is_optional,
+             i.parenthetical_note
+      FROM recipe_ingredient_map rim
+      JOIN ingredients i ON rim.ingredient_id = i.ID
+      WHERE rim.recipe_id=${recipeId} AND ${whereClause}
+      ORDER BY rim.ID;
+      `
     );
 
     if (!q.length) return [];
 
     return q[0].values.map(
-      ([rimId, qty, unit, name, variant, prepNotes, isOptional]) => {
+      ([
+        rimId,
+        qty,
+        unit,
+        name,
+        variant,
+        prepNotes,
+        isOptional,
+        parentheticalNote,
+      ]) => {
         // Fetch substitutes for this ingredient
         const subsQ = db.exec(
           `SELECT r.quantity,
@@ -59,6 +71,7 @@ function formatRecipe(db, recipeId) {
           name,
           variant: variant || '',
           prepNotes: prepNotes || '',
+          parentheticalNote: parentheticalNote || '',
           isOptional: !!isOptional,
           substitutes,
         };

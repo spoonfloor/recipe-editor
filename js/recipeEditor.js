@@ -26,6 +26,8 @@ function renderRecipe(recipe) {
           makeEditable(subHeader, 'text');
           container.appendChild(subHeader);
         }
+
+        // Render each ingredient exactly as encoded in DB
         section.ingredients.forEach((ing) => {
           container.appendChild(renderIngredient(ing));
         });
