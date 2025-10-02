@@ -9,7 +9,6 @@
   font: inherit;
   vertical-align: middle;
   font-family: var(--main-font);
-  font-size: var(--body-font-size);
   font-weight: var(--main-font-weight);
   line-height: 1.6;
 }
@@ -64,7 +63,6 @@ dd {
   margin: 0;
   padding: 0;
   font-family: var(--main-font);
-  font-size: var(--body-font-size);
   font-weight: var(--main-font-weight);
   line-height: 1.4;
 }
@@ -108,7 +106,6 @@ button {
   all: unset;
   box-sizing: border-box;
   font-family: var(--main-font) !important;
-  font-size: var(--body-font-size);
   font-weight: var(--main-font-weight);
   line-height: 1.4;
   color: inherit;
@@ -117,7 +114,6 @@ button {
 input::placeholder,
 textarea::placeholder {
   font-family: var(--main-font) !important;
-  font-size: var(--body-font-size);
   font-weight: var(--main-font-weight);
 }
 

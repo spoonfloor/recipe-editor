@@ -32,8 +32,28 @@ function renderIngredient(line) {
     // Handle pluralization of unit
     let unitText = line.unit || '';
     const numericVal = parseFloat(line.quantity);
+
+    // U.S. cookbook style: abbreviations (tsp, tbsp, cup, oz, lb, etc.) never pluralize
+    // Only pluralize if it's a long-form unit word (e.g., "teaspoon" → "teaspoons")
     if (unitText && numericVal && numericVal !== 1) {
-      if (!unitText.endsWith('s')) {
+      const abbrevUnits = [
+        'tsp',
+        'tbsp',
+        'cup',
+        'oz',
+        'lb',
+        'pt',
+        'qt',
+        'gal',
+        'ml',
+        'l',
+        'g',
+        'kg',
+      ];
+      if (
+        !abbrevUnits.includes(unitText.toLowerCase()) &&
+        !unitText.endsWith('s')
+      ) {
         unitText = unitText + 's';
       }
     }
@@ -54,15 +74,8 @@ function renderIngredient(line) {
     mainText += `, ${line.prepNotes}`;
   }
 
-  // --- Build parenthetical collector ---
-  let parenBits = [];
-  if (line.parentheticalNote) parenBits.push(line.parentheticalNote);
-  if (line.isOptional) parenBits.push('optional');
-  if (parenBits.length > 0) {
-    mainText += ` (${parenBits.join(', ')})`;
-  }
-
   // --- Handle substitutes (join with " or ") ---
+  let groupText = mainText;
   if (line.substitutes && line.substitutes.length > 0) {
     const subsText = line.substitutes.map((sub) => {
       const subBase = sub.variant
@@ -70,10 +83,18 @@ function renderIngredient(line) {
         : sub.name;
       return [sub.quantity, sub.unit, subBase].filter(Boolean).join(' ');
     });
-    mainText += ' or ' + subsText.join(' or ');
+    groupText += ' or ' + subsText.join(' or ');
   }
 
-  textSpan.textContent = mainText;
+  // --- Build parenthetical collector (AFTER group) ---
+  let parenBits = [];
+  if (line.parentheticalNote) parenBits.push(line.parentheticalNote);
+  if (line.isOptional) parenBits.push('optional');
+  if (parenBits.length > 0) {
+    groupText += ` (${parenBits.join(', ')})`;
+  }
+
+  textSpan.textContent = groupText;
 
   // Save raw quantity separately for editing
   textSpan.dataset.rawQuantity = line.quantity || '';
