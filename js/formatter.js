@@ -1,11 +1,19 @@
 function formatRecipe(db, recipeId) {
-  // Title
+  // Title + Servings
   const recipeTitleQuery = db.exec(
-    `SELECT title FROM recipes WHERE ID=${recipeId};`
+    `SELECT title, servings_default, servings_min, servings_max FROM recipes WHERE ID=${recipeId};`
   );
-  const title = recipeTitleQuery.length
-    ? recipeTitleQuery[0].values[0][0]
-    : 'Untitled';
+  let title = 'Untitled';
+  let servingsDefault = null;
+  let servingsMin = null;
+  let servingsMax = null;
+  if (recipeTitleQuery.length) {
+    const row = recipeTitleQuery[0].values[0];
+    title = row[0];
+    servingsDefault = row[1];
+    servingsMin = row[2];
+    servingsMax = row[3];
+  }
 
   // Sections (may be empty)
   const sectionsQuery = db.exec(
@@ -112,7 +120,15 @@ function formatRecipe(db, recipeId) {
     ];
   }
 
-  return { title, sections };
+  return {
+    title,
+    servings: {
+      default: servingsDefault,
+      min: servingsMin,
+      max: servingsMax,
+    },
+    sections,
+  };
 }
 
 // ✅ Expose globally so main.js can use it without import

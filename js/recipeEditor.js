@@ -4,7 +4,13 @@ function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
 
-  // Title now handled in app bar, not here
+  // --- Servings line (first line of recipe) ---
+  if (recipe.servings && recipe.servings.default !== null) {
+    const servingsLine = document.createElement('div');
+    servingsLine.className = 'servings-line';
+    servingsLine.textContent = `Servings: ${recipe.servings.default}`;
+    container.appendChild(servingsLine);
+  }
 
   // Ingredients section
   if (recipe.sections.some((sec) => sec.ingredients.length)) {

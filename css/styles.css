@@ -250,6 +250,8 @@ h1.nav-text {
   color: black;
 }
 
-#foo {
-  font-size: 99px;
+.servings-line {
+  margin-bottom: 16px;
+  font-weight: 500;
+  color: #333;
 }
