@@ -11,7 +11,8 @@ function roundToFraction(value, denominator = 8) {
 }
 
 /**
- * Convert a decimal to a fractional display string (e.g., 1.5 -> "1½")
+ * Convert a decimal to a fractional display string using Unicode glyphs
+ * (e.g., 1.5 -> "1½", 0.25 -> "¼")
  * @param {number} value
  * @param {number} denominator
  * @returns {string}

@@ -234,6 +234,7 @@
   font-size: var(--header-font-size);
   margin-top: 30px;
   margin-bottom: 16px;
+  text-transform: uppercase;
 }
 
 .subsection-header {

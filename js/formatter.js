@@ -32,7 +32,8 @@ function formatRecipe(db, recipeId) {
              i.variant,
              rim.prep_notes,
              rim.is_optional,
-             i.parenthetical_note
+             i.parenthetical_note,
+             i.location_at_home
       FROM recipe_ingredient_map rim
       JOIN ingredients i ON rim.ingredient_id = i.ID
       WHERE rim.recipe_id=${recipeId} AND ${whereClause}
@@ -52,6 +53,7 @@ function formatRecipe(db, recipeId) {
         prepNotes,
         isOptional,
         parentheticalNote,
+        locationAtHome,
       ]) => {
         // Fetch substitutes for this ingredient
         const subsQ = db.exec(
@@ -82,6 +84,7 @@ function formatRecipe(db, recipeId) {
           parentheticalNote: parentheticalNote || '',
           isOptional: !!isOptional,
           substitutes,
+          locationAtHome: locationAtHome ? locationAtHome.toLowerCase() : null,
         };
       }
     );
@@ -100,7 +103,7 @@ function formatRecipe(db, recipeId) {
   // Build sections
   let sections = sectionRows.map(([id, name]) => ({
     name,
-    contexts: [], // default empty; contexts are handled in extended schema if needed
+    contexts: [],
     ingredients: loadIngredients(`rim.section_id=${id}`),
     steps: loadSteps(`section_id=${id}`),
   }));
@@ -112,7 +115,7 @@ function formatRecipe(db, recipeId) {
     sections = [
       {
         name: null,
-        contexts: [], // explicitly empty so renderer can treat it as global
+        contexts: [],
         ingredients: globalIngredients,
         steps: globalSteps,
       },
@@ -131,5 +134,4 @@ function formatRecipe(db, recipeId) {
   };
 }
 
-// ✅ Expose globally so main.js can use it without import
 window.formatRecipe = formatRecipe;
