@@ -32,19 +32,101 @@ const LOCATION_ORDER = [
   'measures',
 ];
 
+// --- Format helpers ---
+function formatIngredientLine(ing) {
+  let qtyText = '';
+  if (typeof ing.quantity === 'number' && !isNaN(ing.quantity)) {
+    qtyText = decimalToFractionDisplay(ing.quantity);
+  } else if (typeof ing.quantity === 'string' && ing.quantity.trim()) {
+    qtyText = ing.quantity; // e.g. "to taste", "2 or 3"
+  }
+
+  const unitText = ing.unit || '';
+  const qtyUnit = [qtyText, unitText].filter(Boolean).join(' ');
+
+  // build main part
+  let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
+  if (qtyUnit) text = `${qtyUnit} ${text}`;
+
+  // add prep notes
+  if (ing.prepNotes) {
+    text += `, ${ing.prepNotes}`;
+  }
+
+  // add parenthetical note + optional
+  let parens = [];
+  if (ing.parentheticalNote) parens.push(ing.parentheticalNote);
+  if (ing.isOptional) parens.push('optional');
+  if (parens.length > 0) {
+    text += ` (${parens.join(', ')})`;
+  }
+
+  return text.trim();
+}
+
+function formatNeedLine(ing) {
+  let qtyText = '';
+  if (typeof ing.quantity === 'number' && !isNaN(ing.quantity)) {
+    qtyText = decimalToFractionDisplay(ing.quantity);
+  } else if (typeof ing.quantity === 'string' && ing.quantity.trim()) {
+    qtyText = ing.quantity;
+  }
+
+  const unitText = ing.unit || '';
+  const qtyUnit = [qtyText, unitText].filter(Boolean).join(' ');
+
+  let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
+  if (qtyUnit) text += ` (${qtyUnit})`;
+
+  // 🚫 omit prepNotes here
+
+  // merge optional into same parentheses
+  if (ing.isOptional) {
+    if (qtyUnit) {
+      text = text.replace(/\)$/, ', optional)');
+    } else {
+      text += ' (optional)';
+    }
+  }
+
+  return text.trim();
+}
+
+// --- Sort helper (section → location → optional → alphabetical) ---
+function sortIngredients(list) {
+  return [...list].sort((a, b) => {
+    // 1. Location order
+    const locA = a.locationAtHome ? a.locationAtHome.toLowerCase() : '';
+    const locB = b.locationAtHome ? b.locationAtHome.toLowerCase() : '';
+    const idxA = LOCATION_ORDER.indexOf(locA);
+    const idxB = LOCATION_ORDER.indexOf(locB);
+    if (idxA !== idxB) return idxA - idxB;
+
+    // 2. Required before optional
+    if (a.isOptional !== b.isOptional) {
+      return a.isOptional ? 1 : -1;
+    }
+
+    // 3. Alphabetical
+    const nameA = `${a.variant || ''} ${a.name}`.trim().toLowerCase();
+    const nameB = `${b.variant || ''} ${b.name}`.trim().toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+}
+
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
 
-  // --- Servings line
-  if (recipe.servings && recipe.servings.default !== null) {
+  // --- Servings (if present) ---
+  if (recipe.servingsDefault) {
     const servingsLine = document.createElement('div');
     servingsLine.className = 'servings-line';
-    servingsLine.textContent = `Servings: ${recipe.servings.default}`;
+    servingsLine.textContent = `Servings: ${recipe.servingsDefault}`;
     container.appendChild(servingsLine);
   }
 
-  // --- Ingredients section
+  // --- Ingredients section ---
   if (recipe.sections.some((sec) => sec.ingredients.length)) {
     const ingHeader = document.createElement('div');
     ingHeader.className = 'section-header';
@@ -52,7 +134,11 @@ function renderRecipe(recipe) {
     container.appendChild(ingHeader);
 
     recipe.sections.forEach((section) => {
-      if (section.ingredients.length) {
+      if (
+        section.ingredients.length &&
+        (section.contexts.includes('ingredients') ||
+          section.contexts.length === 0)
+      ) {
         if (section.name) {
           const subHeader = document.createElement('div');
           subHeader.className = 'subsection-header';
@@ -61,22 +147,28 @@ function renderRecipe(recipe) {
           container.appendChild(subHeader);
         }
 
-        section.ingredients.forEach((ing) => {
-          container.appendChild(renderIngredient(ing));
+        // 🔹 Sorted render with formatIngredientLine
+        sortIngredients(section.ingredients).forEach((ing) => {
+          const line = document.createElement('div');
+          line.className = 'ingredient-line';
+          const span = document.createElement('span');
+          span.textContent = formatIngredientLine(ing);
+          line.appendChild(span);
+          container.appendChild(line);
         });
       }
     });
   }
 
-  // --- "You will need" section ---
+  // --- You will need section ---
   const allIngredients = recipe.sections.flatMap((sec) => sec.ingredients);
-  if (allIngredients.length > 0) {
+  if (allIngredients.length) {
     const needHeader = document.createElement('div');
     needHeader.className = 'section-header';
     needHeader.textContent = 'You will need';
     container.appendChild(needHeader);
 
-    // group by location
+    // Group by location
     const grouped = {};
     allIngredients.forEach((ing) => {
       const loc = ing.locationAtHome || '';
@@ -84,58 +176,64 @@ function renderRecipe(recipe) {
       grouped[loc].push(ing);
     });
 
-    // sort locations by canonical order
+    // Render groups in canonical location order
     LOCATION_ORDER.forEach((loc) => {
-      if (loc !== 'measures' && grouped[loc] && grouped[loc].length > 0) {
-        if (loc !== '') {
-          const subHeader = document.createElement('div');
-          subHeader.className = 'subsection-header';
-          subHeader.textContent = capitalizeWords(loc);
-          container.appendChild(subHeader);
-        }
+      if (!grouped[loc] || grouped[loc].length === 0) return;
 
-        grouped[loc]
-          .sort((a, b) => a.name.localeCompare(b.name))
-          .forEach((ing) => {
-            const line = document.createElement('div');
-            line.className = 'ingredient-line';
-            const qtyText = ing.quantity
-              ? ` (${decimalToFractionDisplay(ing.quantity)} ${ing.unit})`
-              : '';
-            line.textContent = `${ing.variant ? ing.variant + ' ' : ''}${
-              ing.name
-            }${qtyText}`;
-            container.appendChild(line);
-          });
+      if (loc) {
+        const locHeader = document.createElement('div');
+        locHeader.className = 'subsection-header';
+        locHeader.textContent = capitalizeWords(loc);
+        container.appendChild(locHeader);
       }
-    });
 
-    // add measures subsection
-    const measures = computeMeasures(allIngredients);
-    if (measures.length > 0) {
-      const subHeader = document.createElement('div');
-      subHeader.className = 'subsection-header';
-      subHeader.textContent = 'Measures';
-      container.appendChild(subHeader);
-
-      measures.forEach((m) => {
+      // 🔹 Apply same sort rules with formatNeedLine
+      sortIngredients(grouped[loc]).forEach((ing) => {
         const line = document.createElement('div');
         line.className = 'ingredient-line';
-        line.textContent = m;
+        const span = document.createElement('span');
+        span.textContent = formatNeedLine(ing);
+        line.appendChild(span);
         container.appendChild(line);
       });
-    }
+    });
   }
 
-  // --- Instructions section
-  if (recipe.sections.some((sec) => sec.steps.length)) {
+  // --- Measures section ---
+  const measures = computeMeasures(allIngredients);
+  if (measures.length) {
+    const measureHeader = document.createElement('div');
+    measureHeader.className = 'section-header';
+    measureHeader.textContent = 'Measures';
+    container.appendChild(measureHeader);
+
+    measures.forEach((m) => {
+      const line = document.createElement('div');
+      line.className = 'ingredient-line';
+      const span = document.createElement('span');
+      span.textContent = m;
+      line.appendChild(span);
+      container.appendChild(line);
+    });
+  }
+
+  // --- Instructions section ---
+  if (
+    recipe.sections.some(
+      (sec) => sec.steps.length || (!sec.name && sec.ingredients.length)
+    )
+  ) {
     const stepHeader = document.createElement('div');
     stepHeader.className = 'section-header';
     stepHeader.textContent = 'Instructions';
     container.appendChild(stepHeader);
 
     recipe.sections.forEach((section) => {
-      if (section.steps.length) {
+      if (
+        section.steps.length &&
+        (section.contexts.includes('instructions') ||
+          section.contexts.length === 0)
+      ) {
         if (section.name) {
           const subHeader = document.createElement('div');
           subHeader.className = 'subsection-header';
@@ -167,6 +265,7 @@ function renderRecipe(recipe) {
             text.className = 'step-text';
             text.textContent = step;
             makeEditable(text, 'text');
+
             instr.appendChild(text);
           }
 
