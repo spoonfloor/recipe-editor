@@ -130,6 +130,7 @@ function formatRecipe(db, recipeId) {
       min: servingsMin,
       max: servingsMax,
     },
+    servingsDefault, // ← ✅ add this line
     sections,
   };
 }

@@ -1,9 +1,9 @@
 // Recipe editor
 
 // --- Display modes ---
-const SHOW_RECIPE_TEXT = false; // normal human-readable output
+const SHOW_RECIPE_TEXT = true; // normal human-readable output
 const SHOW_DEBUG_LOC_TAGS = false; // e.g., esse, 2_frid, spin, baby
-const SHOW_DEBUG_MEASURE_TAGS = true; // e.g., marinar, 4½ cup
+const SHOW_DEBUG_MEASURE_TAGS = false; // e.g., marinar, 4½ cup
 
 // --- Canonical measure order (normalized units) ---
 const MEASURE_ORDER = [
@@ -213,6 +213,60 @@ function composeDisplayText(recipeText, locDebug, measureDebug) {
   return parts.join(' | ');
 }
 
+// --- Sort helpers ---
+function sortIngredientsForDisplay(list) {
+  return [...list].sort((a, b) => {
+    // 1. Section order (if provided)
+    if (a.sectionIndex !== undefined && b.sectionIndex !== undefined) {
+      if (a.sectionIndex !== b.sectionIndex)
+        return a.sectionIndex - b.sectionIndex;
+    }
+
+    // 2. Required before optional
+    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
+
+    // 3. Location order (INGREDIENTS_LOCATION_ORDER)
+    const locOrder = INGREDIENTS_LOCATION_ORDER;
+    const aLoc = a.locationAtHome || '';
+    const bLoc = b.locationAtHome || '';
+    const iA = locOrder.indexOf(aLoc);
+    const iB = locOrder.indexOf(bLoc);
+    if (iA !== iB) return iA - iB;
+
+    // 4–5. Core name → variant
+    const nameA = a.name.toLowerCase();
+    const nameB = b.name.toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    const varA = (a.variant || '').toLowerCase();
+    const varB = (b.variant || '').toLowerCase();
+    return varA.localeCompare(varB);
+  });
+}
+
+function sortIngredientsForNeed(list) {
+  return [...list].sort((a, b) => {
+    // 1. Physical-location order (LOCATION_ORDER)
+    const locOrder = LOCATION_ORDER;
+    const aLoc = a.locationAtHome || '';
+    const bLoc = b.locationAtHome || '';
+    const iA = locOrder.indexOf(aLoc);
+    const iB = locOrder.indexOf(bLoc);
+    if (iA !== iB) return iA - iB;
+
+    // 2. Required before optional
+    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
+
+    // 3–4. Core name → variant
+    const nameA = a.name.toLowerCase();
+    const nameB = b.name.toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+    const varA = (a.variant || '').toLowerCase();
+    const varB = (b.variant || '').toLowerCase();
+    return varA.localeCompare(varB);
+  });
+}
+
+// --- Main render function ---
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
@@ -220,7 +274,7 @@ function renderRecipe(recipe) {
   if (recipe.servingsDefault) {
     const servingsLine = document.createElement('div');
     servingsLine.className = 'servings-line';
-    servingsLine.textContent = `Servings: ${recipe.servingsDefault}`;
+    servingsLine.textContent = `Serves ${recipe.servingsDefault}`;
     container.appendChild(servingsLine);
   }
 
@@ -231,7 +285,7 @@ function renderRecipe(recipe) {
     ingHeader.textContent = 'Ingredients';
     container.appendChild(ingHeader);
 
-    recipe.sections.forEach((section) => {
+    recipe.sections.forEach((section, index) => {
       if (
         section.ingredients.length &&
         (section.contexts.includes('ingredients') ||
@@ -245,7 +299,8 @@ function renderRecipe(recipe) {
           container.appendChild(subHeader);
         }
 
-        sortIngredients(section.ingredients).forEach((ing) => {
+        // updated sort call
+        sortIngredientsForDisplay(section.ingredients).forEach((ing) => {
           const line = document.createElement('div');
           line.className = 'ingredient-line';
           const span = document.createElement('span');
@@ -293,7 +348,8 @@ function renderRecipe(recipe) {
         container.appendChild(locHeader);
       }
 
-      sortIngredients(grouped[loc], LOCATION_ORDER).forEach((ing) => {
+      // updated sort call
+      sortIngredientsForNeed(grouped[loc]).forEach((ing) => {
         const line = document.createElement('div');
         line.className = 'ingredient-line';
         const span = document.createElement('span');
@@ -315,7 +371,7 @@ function renderRecipe(recipe) {
   const measures = computeMeasures(allIngredients);
   if (measures.length) {
     const measureHeader = document.createElement('div');
-    measureHeader.className = 'section-header';
+    measureHeader.className = 'subsection-header';
     measureHeader.textContent = 'Measures';
     container.appendChild(measureHeader);
 
