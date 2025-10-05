@@ -1,5 +1,6 @@
 // Recipe editor
 
+// --- Canonical measure order (normalized units) ---
 const MEASURE_ORDER = [
   '⅛ tsp',
   '¼ tsp',
@@ -7,7 +8,7 @@ const MEASURE_ORDER = [
   '1 tsp',
   '½ tbsp',
   '1 tbsp',
-  '1½ tbsp', // ✅ added here
+  '1½ tbsp',
   '⅛ cup',
   '¼ cup',
   '⅓ cup',
@@ -92,26 +93,47 @@ function formatNeedLine(ing) {
   return text.trim();
 }
 
-// --- Sort helper (section → location → optional → alphabetical) ---
+// --- Sort helper (optional → alphabetical) ---
 function sortIngredients(list) {
   return [...list].sort((a, b) => {
-    // 1. Location order
-    const locA = a.locationAtHome ? a.locationAtHome.toLowerCase() : '';
-    const locB = b.locationAtHome ? b.locationAtHome.toLowerCase() : '';
-    const idxA = LOCATION_ORDER.indexOf(locA);
-    const idxB = LOCATION_ORDER.indexOf(locB);
-    if (idxA !== idxB) return idxA - idxB;
-
-    // 2. Required before optional
+    // 1. Required before optional
     if (a.isOptional !== b.isOptional) {
       return a.isOptional ? 1 : -1;
     }
 
-    // 3. Alphabetical
+    // 2. Alphabetical (variant + name)
     const nameA = `${a.variant || ''} ${a.name}`.trim().toLowerCase();
     const nameB = `${b.variant || ''} ${b.name}`.trim().toLowerCase();
     return nameA.localeCompare(nameB);
   });
+}
+
+// --- Merge duplicates for "You will need" ---
+function mergeByIngredient(list) {
+  const merged = [];
+  const map = new Map();
+
+  list.forEach((ing) => {
+    const key = `${ing.variant || ''}|${ing.name}|${ing.locationAtHome || ''}`;
+    if (!map.has(key)) {
+      map.set(key, { ...ing }); // clone first instance
+    } else {
+      const existing = map.get(key);
+      // combine numeric quantities if same unit
+      if (
+        typeof existing.quantity === 'number' &&
+        typeof ing.quantity === 'number' &&
+        existing.unit === ing.unit
+      ) {
+        existing.quantity += ing.quantity;
+      }
+      // carry forward optional flag if any instance is optional
+      existing.isOptional = existing.isOptional || ing.isOptional;
+    }
+  });
+
+  map.forEach((v) => merged.push(v));
+  return merged;
 }
 
 function renderRecipe(recipe) {
@@ -174,6 +196,11 @@ function renderRecipe(recipe) {
       const loc = ing.locationAtHome || '';
       if (!grouped[loc]) grouped[loc] = [];
       grouped[loc].push(ing);
+    });
+
+    // 🔹 Merge duplicates within each location
+    Object.keys(grouped).forEach((loc) => {
+      grouped[loc] = mergeByIngredient(grouped[loc]);
     });
 
     // Render groups in canonical location order
@@ -352,46 +379,37 @@ function computeMeasures(ingredients) {
 
     // --- Cups ---
     else if (unit.includes('cup')) {
-      if (isLiquid) {
-        // liquids → nearest larger cup (2c/4c/8c allowed)
-        const cupOrder = [
-          '⅛ cup',
-          '¼ cup',
-          '⅓ cup',
-          '½ cup',
-          '⅔ cup',
-          '¾ cup',
-          '1 cup',
-          '2 cup',
-          '4 cup',
-          '8 cup',
-        ];
-        let best = '1 cup';
-        for (const m of cupOrder) {
-          if (qty <= measures[m] + 1e-6) {
-            best = m;
-            break;
+      const qtyNum = Number(qty);
+      if (qtyNum < 5) {
+        // small batch: use 4-cup + fractional dry cups
+        found.add('4 cup');
+
+        const remainder = qtyNum % 4;
+        if (remainder > 0) {
+          // choose nearest dry-cup size for the remainder
+          const dryCups = [
+            '⅛ cup',
+            '¼ cup',
+            '⅓ cup',
+            '½ cup',
+            '⅔ cup',
+            '¾ cup',
+            '1 cup',
+          ];
+          for (const m of dryCups) {
+            if (Math.abs(remainder - measures[m]) < 0.01) {
+              found.add(m);
+              break;
+            }
+            if (remainder < measures[m]) {
+              found.add(m);
+              break;
+            }
           }
         }
-        found.add(best);
       } else {
-        // dry → limit to 1 cup max
-        let remaining = qty;
-        const unitMeasures = [
-          '1 cup',
-          '¾ cup',
-          '⅔ cup',
-          '½ cup',
-          '⅓ cup',
-          '¼ cup',
-          '⅛ cup',
-        ];
-        for (const m of unitMeasures) {
-          while (remaining + 1e-6 >= measures[m] && qty + 1e-6 >= measures[m]) {
-            found.add(m);
-            remaining -= measures[m];
-          }
-        }
+        // large batch: always use 8-cup measure
+        found.add('8 cup');
       }
     }
   }
