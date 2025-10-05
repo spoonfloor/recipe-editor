@@ -1,7 +1,9 @@
 // Recipe editor
 
-// --- Global debug toggle ---
-const DEBUG_MODE = true;
+// --- Display modes ---
+const SHOW_RECIPE_TEXT = false; // normal human-readable output
+const SHOW_DEBUG_LOC_TAGS = false; // e.g., esse, 2_frid, spin, baby
+const SHOW_DEBUG_MEASURE_TAGS = true; // e.g., marinar, 4½ cup
 
 // --- Canonical measure order (normalized units) ---
 const MEASURE_ORDER = [
@@ -24,8 +26,8 @@ const MEASURE_ORDER = [
   '8 cup',
 ];
 
-// --- Location order: "You will need" (clockwise kitchen sweep) ---
-const LOCATION_ORDER_NEED = [
+// canonical order for locations (used in “You will need”)
+const LOCATION_ORDER = [
   '', // null / top-level
   'fridge',
   'freezer',
@@ -37,16 +39,17 @@ const LOCATION_ORDER_NEED = [
   'measures',
 ];
 
-// --- Location order: "Ingredients" (chef’s workflow) ---
-const LOCATION_ORDER_INGREDIENTS = [
-  '', // catch-all / unspecified
-  'fridge', // core perishables
-  'pantry', // staples
-  'above fridge', // oils, vinegars
-  'cereal cabinet', // nuts, grains
-  'fruit stand', // fresh fruit
-  'freezer', // long-term storage
-  'spices', // flavorings
+// canonical order for Ingredients section (for normal reading)
+const INGREDIENTS_LOCATION_ORDER = [
+  '', // null / top-level
+  'fridge',
+  'above fridge',
+  'pantry',
+  'cereal cabinet',
+  'spices',
+  'fruit stand',
+  'freezer',
+  'measures',
 ];
 
 // --- Format helpers ---
@@ -61,16 +64,16 @@ function formatIngredientLine(ing) {
   const unitText = ing.unit || '';
   const qtyUnit = [qtyText, unitText].filter(Boolean).join(' ');
 
-  // Build main part
+  // build main part
   let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
   if (qtyUnit) text = `${qtyUnit} ${text}`;
 
-  // Add prep notes
+  // add prep notes
   if (ing.prepNotes) {
     text += `, ${ing.prepNotes}`;
   }
 
-  // Add parenthetical note + optional
+  // add parenthetical note + optional
   let parens = [];
   if (ing.parentheticalNote) parens.push(ing.parentheticalNote);
   if (ing.isOptional) parens.push('optional');
@@ -95,7 +98,7 @@ function formatNeedLine(ing) {
   let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
   if (qtyUnit) text += ` (${qtyUnit})`;
 
-  // Merge optional into same parentheses
+  // merge optional into same parentheses
   if (ing.isOptional) {
     if (qtyUnit) {
       text = text.replace(/\)$/, ', optional)');
@@ -107,80 +110,30 @@ function formatNeedLine(ing) {
   return text.trim();
 }
 
-// --- Debug helper: context-aware tag builder ---
-function debugTag(ing, context = 'ingredients') {
-  if (!DEBUG_MODE) return '';
-  const locList =
-    context === 'need' ? LOCATION_ORDER_NEED : LOCATION_ORDER_INGREDIENTS;
-
-  const loc = (ing.locationAtHome || '').toLowerCase();
-  const locIndex = locList.indexOf(loc);
-  const locTag =
-    (locIndex >= 0 ? `${locIndex + 1}_` : '') + (loc || 'none').slice(0, 4);
-
-  const optTag = ing.isOptional ? 'opti' : 'esse';
-  const nameTag = (ing.name || '')
-    .replace(/[^a-z]/gi, '')
-    .slice(0, 4)
-    .toLowerCase();
-  const variantTag =
-    (ing.variant || '')
-      .replace(/[^a-z]/gi, '')
-      .slice(0, 4)
-      .toLowerCase() || '----';
-
-  return ` [${optTag}, ${locTag}, ${nameTag}, ${variantTag}]`;
-}
-
-// --- Sort helper for Ingredients section ---
-function sortIngredientsForIngredients(list) {
+// --- Sort helper (optional → alphabetical) ---
+function sortIngredients(list, locationOrder = INGREDIENTS_LOCATION_ORDER) {
   return [...list].sort((a, b) => {
-    // 1️⃣ Required before optional (global)
-    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
+    // 1. location order
+    const aLoc = a.locationAtHome || '';
+    const bLoc = b.locationAtHome || '';
+    const locIndexA = locationOrder.indexOf(aLoc);
+    const locIndexB = locationOrder.indexOf(bLoc);
+    if (locIndexA !== locIndexB) return locIndexA - locIndexB;
 
-    // 2️⃣ Location (chef’s workflow order)
-    const locA = a.locationAtHome || '';
-    const locB = b.locationAtHome || '';
-    const indexA = LOCATION_ORDER_INGREDIENTS.indexOf(locA);
-    const indexB = LOCATION_ORDER_INGREDIENTS.indexOf(locB);
-    if (indexA !== indexB) return indexA - indexB;
+    // 2. required before optional
+    if (a.isOptional !== b.isOptional) {
+      return a.isOptional ? 1 : -1;
+    }
 
-    // 3️⃣ Core name (A–Z)
-    const nameA = (a.name || '').toLowerCase();
-    const nameB = (b.name || '').toLowerCase();
-    const nameCompare = nameA.localeCompare(nameB);
-    if (nameCompare !== 0) return nameCompare;
+    // 3. alphabetical by core name
+    const nameA = a.name.toLowerCase();
+    const nameB = b.name.toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
 
-    // 4️⃣ Variant (A–Z)
-    const variantA = (a.variant || '').toLowerCase();
-    const variantB = (b.variant || '').toLowerCase();
-    return variantA.localeCompare(variantB);
-  });
-}
-
-// --- Sort helper for You Will Need section ---
-function sortIngredientsForNeed(list) {
-  return [...list].sort((a, b) => {
-    // 1️⃣ Location (clockwise sweep)
-    const locA = a.locationAtHome || '';
-    const locB = b.locationAtHome || '';
-    const indexA = LOCATION_ORDER_NEED.indexOf(locA);
-    const indexB = LOCATION_ORDER_NEED.indexOf(locB);
-    if (indexA !== indexB) return indexA - indexB;
-
-    // 2️⃣ Required before optional
-    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
-
-    // 3️⃣ Core name (A–Z)
-    const nameA = (a.name || '').toLowerCase();
-    const nameB = (b.name || '').toLowerCase();
-    const nameCompare = nameA.localeCompare(nameB);
-    if (nameCompare !== 0) return nameCompare;
-
-    // 4️⃣ Variant (A–Z)
-    const variantA = (a.variant || '').toLowerCase();
-    const variantB = (b.variant || '').toLowerCase();
-    return variantA.localeCompare(variantB);
+    // 4. alphabetical by variant
+    const varA = a.variant ? a.variant.toLowerCase() : '';
+    const varB = b.variant ? b.variant.toLowerCase() : '';
+    return varA.localeCompare(varB);
   });
 }
 
@@ -210,12 +163,60 @@ function mergeByIngredient(list) {
   return merged;
 }
 
-// --- Main render function ---
+// --- Debug helpers ---
+function debugTag(ing, context) {
+  const opt = ing.isOptional ? 'opti' : 'esse';
+  const locIndex =
+    (context === 'need'
+      ? LOCATION_ORDER.indexOf(ing.locationAtHome || '')
+      : INGREDIENTS_LOCATION_ORDER.indexOf(ing.locationAtHome || '')) + 1;
+  const loc = (ing.locationAtHome || 'none').slice(0, 4) || 'none';
+  const nameCore = ing.name.slice(0, 4).toLowerCase().padEnd(4, '-');
+  const varCore = (ing.variant || '----')
+    .slice(0, 4)
+    .toLowerCase()
+    .padEnd(4, '-');
+  return `${opt}, ${locIndex}_${loc}, ${nameCore}, ${varCore}`;
+}
+
+function measureDebugTag(ing, allIngredients = []) {
+  const normalize = (str) =>
+    (str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z]/g, '')
+      .slice(0, 7);
+
+  const core = normalize(ing.name);
+  const variant = normalize(ing.variant);
+  const dupes = allIngredients.filter((x) => normalize(x.name) === core);
+  const needsVariant = dupes.length > 1 && variant.length > 0;
+  const id = needsVariant ? `${core}_${variant}` : core;
+
+  let measure = '—';
+  if (ing.quantity || ing.unit) {
+    measure = [ing.quantity, ing.unit].filter(Boolean).join(' ');
+  }
+
+  return `${id}, ${measure}`;
+}
+
+/**
+ * Build a display string according to active debug settings
+ */
+function composeDisplayText(recipeText, locDebug, measureDebug) {
+  const parts = [];
+  if (SHOW_RECIPE_TEXT && recipeText) parts.push(recipeText);
+  if (SHOW_DEBUG_LOC_TAGS && locDebug) parts.push(locDebug);
+  if (SHOW_DEBUG_MEASURE_TAGS && measureDebug) parts.push(measureDebug);
+  return parts.join(' | ');
+}
+
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
 
-  // --- Servings (if present) ---
   if (recipe.servingsDefault) {
     const servingsLine = document.createElement('div');
     servingsLine.className = 'servings-line';
@@ -244,12 +245,18 @@ function renderRecipe(recipe) {
           container.appendChild(subHeader);
         }
 
-        sortIngredientsForIngredients(section.ingredients).forEach((ing) => {
+        sortIngredients(section.ingredients).forEach((ing) => {
           const line = document.createElement('div');
           line.className = 'ingredient-line';
           const span = document.createElement('span');
-          span.textContent =
-            formatIngredientLine(ing) + debugTag(ing, 'ingredients');
+          const recipeText = formatIngredientLine(ing);
+          const locDebug = debugTag(ing, 'ingredients');
+          const measureDebug = measureDebugTag(ing, section.ingredients);
+          span.textContent = composeDisplayText(
+            recipeText,
+            locDebug,
+            measureDebug
+          );
           line.appendChild(span);
           container.appendChild(line);
         });
@@ -265,7 +272,6 @@ function renderRecipe(recipe) {
     needHeader.textContent = 'You will need';
     container.appendChild(needHeader);
 
-    // Group by location
     const grouped = {};
     allIngredients.forEach((ing) => {
       const loc = ing.locationAtHome || '';
@@ -277,7 +283,7 @@ function renderRecipe(recipe) {
       grouped[loc] = mergeByIngredient(grouped[loc]);
     });
 
-    LOCATION_ORDER_NEED.forEach((loc) => {
+    LOCATION_ORDER.forEach((loc) => {
       if (!grouped[loc] || grouped[loc].length === 0) return;
 
       if (loc) {
@@ -287,11 +293,18 @@ function renderRecipe(recipe) {
         container.appendChild(locHeader);
       }
 
-      sortIngredientsForNeed(grouped[loc]).forEach((ing) => {
+      sortIngredients(grouped[loc], LOCATION_ORDER).forEach((ing) => {
         const line = document.createElement('div');
         line.className = 'ingredient-line';
         const span = document.createElement('span');
-        span.textContent = formatNeedLine(ing) + debugTag(ing, 'need');
+        const recipeText = formatNeedLine(ing);
+        const locDebug = debugTag(ing, 'need');
+        const measureDebug = measureDebugTag(ing, grouped[loc]);
+        span.textContent = composeDisplayText(
+          recipeText,
+          locDebug,
+          measureDebug
+        );
         line.appendChild(span);
         container.appendChild(line);
       });
@@ -347,16 +360,13 @@ function renderRecipe(recipe) {
 
           if (section.steps.length > 1) {
             instr.classList.add('numbered');
-
             const num = document.createElement('span');
             num.className = 'step-num';
             num.textContent = index + 1 + '.';
-
             const text = document.createElement('span');
             text.className = 'step-text';
             text.textContent = step;
             makeEditable(text, 'text');
-
             instr.appendChild(num);
             instr.appendChild(text);
           } else {
@@ -364,7 +374,6 @@ function renderRecipe(recipe) {
             text.className = 'step-text';
             text.textContent = step;
             makeEditable(text, 'text');
-
             instr.appendChild(text);
           }
 
@@ -381,7 +390,13 @@ function capitalizeWords(str) {
 }
 
 /**
+ * Compute actual required household measures (canonical)
+ */
+/**
  * Decompose quantity into minimal canonical measures
+ */
+/**
+ * Compute actual required household measures (canonical)
  */
 function computeMeasures(ingredients) {
   const found = new Set();
@@ -407,9 +422,33 @@ function computeMeasures(ingredients) {
     '8 cup': 8,
   };
 
+  // Helper to pick nearest dry-cup size for small or remainder volumes
+  function addDryCup(qtyNum) {
+    const dryCups = [
+      '⅛ cup',
+      '¼ cup',
+      '⅓ cup',
+      '½ cup',
+      '⅔ cup',
+      '¾ cup',
+      '1 cup',
+    ];
+    for (const m of dryCups) {
+      if (Math.abs(qtyNum - measures[m]) < 0.01) {
+        found.add(m);
+        return;
+      }
+      if (qtyNum < measures[m]) {
+        found.add(m);
+        return;
+      }
+    }
+  }
+
   function decompose(qty, unit, isLiquid) {
     if (!qty || isNaN(qty)) return;
 
+    // --- Teaspoons ---
     if (unit.includes('tsp')) {
       let remaining = qty;
       const unitMeasures = ['1 tsp', '½ tsp', '¼ tsp', '⅛ tsp'];
@@ -419,62 +458,97 @@ function computeMeasures(ingredients) {
           remaining -= measures[m];
         }
       }
-    } else if (unit.includes('tbsp')) {
+    }
+
+    // --- Tablespoons ---
+    else if (unit.includes('tbsp')) {
       let remaining = qty;
+
+      // Special case: exactly 1.5 tbsp → prefer "1½ tbsp"
       if (Math.abs(remaining - 1.5) < 1e-6) {
         found.add('1½ tbsp');
         remaining = 0;
-      } else {
-        const unitMeasures = ['1 tbsp', '½ tbsp'];
-        for (const m of unitMeasures) {
-          while (remaining + 1e-6 >= measures[m]) {
+      }
+
+      // Otherwise, decompose into 1 tbsp + ½ tbsp
+      const unitMeasures = ['1 tbsp', '½ tbsp'];
+      for (const m of unitMeasures) {
+        while (remaining + 1e-6 >= measures[m]) {
+          found.add(m);
+          remaining -= measures[m];
+        }
+      }
+    }
+
+    // --- Cups ---
+    else if (unit.includes('cup')) {
+      const qtyNum = Number(qty);
+
+      // Helper: choose dry measure for small or remainder volumes
+      function addDryCup(qtyNum) {
+        const dryCups = [
+          '⅛ cup',
+          '¼ cup',
+          '⅓ cup',
+          '½ cup',
+          '⅔ cup',
+          '¾ cup',
+          '1 cup',
+        ];
+        for (const m of dryCups) {
+          if (Math.abs(qtyNum - measures[m]) < 0.01) {
             found.add(m);
-            remaining -= measures[m];
+            return;
+          }
+          if (qtyNum < measures[m]) {
+            found.add(m);
+            return;
           }
         }
       }
-    } else if (unit.includes('cup')) {
-      const qtyNum = Number(qty);
-      if (qtyNum < 5) {
-        found.add('4 cup');
-        const remainder = qtyNum % 4;
-        if (remainder > 0) {
-          const dryCups = [
-            '⅛ cup',
-            '¼ cup',
-            '⅓ cup',
-            '½ cup',
-            '⅔ cup',
-            '¾ cup',
-            '1 cup',
-          ];
-          for (const m of dryCups) {
-            if (Math.abs(remainder - measures[m]) < 0.01) {
-              found.add(m);
-              break;
-            }
-            if (remainder < measures[m]) {
-              found.add(m);
-              break;
-            }
-          }
-        }
+
+      // Helper: choose the correct liquid vessel (1, 2, 4, or 8 cup)
+      function chooseLiquidMeasure(qtyCups) {
+        if (qtyCups <= 1.25) return '1 cup';
+        if (qtyCups <= 2.5) return '2 cup';
+        if (qtyCups <= 5.5) return '4 cup';
+        return '8 cup';
+      }
+
+      // --- Main logic ---
+      if (qtyNum <= 1.25) {
+        // Case A: small volumes → dry cups only
+        addDryCup(qtyNum);
       } else {
-        found.add('8 cup');
+        // Case B: liquid vessel territory
+        const mainVessel = chooseLiquidMeasure(qtyNum);
+        found.add(mainVessel);
+
+        const mainSize = measures[mainVessel];
+        const remainder = qtyNum % mainSize;
+
+        // Add a small dry-cup top-up if remainder < 1.25 cups
+        if (remainder > 0 && remainder < 1.25) {
+          addDryCup(remainder);
+        }
       }
     }
   }
 
+  // Process all ingredients
   ingredients.forEach((ing) => {
     if (!ing.unit || !ing.quantity) return;
     const qty = ing.quantity;
     const unit = ing.unit.toLowerCase();
 
+    // 🔹 Treat fridge/above-fridge as liquid; freezer is *not* liquid.
+    const loc = (ing.locationAtHome || '').toLowerCase();
     const name = ing.name.toLowerCase();
     const isLiquid =
-      (ing.locationAtHome &&
-        ['fridge', 'above fridge'].includes(ing.locationAtHome)) ||
-      name === 'water';
+      (loc && ['fridge', 'above fridge'].includes(loc)) ||
+      ['water', 'broth', 'sauce', 'oil', 'vinegar', 'juice'].some((w) =>
+        name.includes(w)
+      );
 
     decompose(qty, unit, isLiquid);
   });
