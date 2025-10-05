@@ -1,5 +1,8 @@
 // Recipe editor
 
+// --- Global debug toggle ---
+const DEBUG_MODE = true;
+
 // --- Canonical measure order (normalized units) ---
 const MEASURE_ORDER = [
   '⅛ tsp',
@@ -21,8 +24,8 @@ const MEASURE_ORDER = [
   '8 cup',
 ];
 
-// canonical order for locations
-const LOCATION_ORDER = [
+// --- Location order: "You will need" (clockwise kitchen sweep) ---
+const LOCATION_ORDER_NEED = [
   '', // null / top-level
   'fridge',
   'freezer',
@@ -30,7 +33,20 @@ const LOCATION_ORDER = [
   'pantry',
   'cereal cabinet',
   'spices',
+  'fruit stand',
   'measures',
+];
+
+// --- Location order: "Ingredients" (chef’s workflow) ---
+const LOCATION_ORDER_INGREDIENTS = [
+  '', // catch-all / unspecified
+  'fridge', // core perishables
+  'pantry', // staples
+  'above fridge', // oils, vinegars
+  'cereal cabinet', // nuts, grains
+  'fruit stand', // fresh fruit
+  'freezer', // long-term storage
+  'spices', // flavorings
 ];
 
 // --- Format helpers ---
@@ -42,38 +58,19 @@ function formatIngredientLine(ing) {
     qtyText = ing.quantity; // e.g. "to taste", "2 or 3"
   }
 
-  // Normalize human phrasing for free-text quantities like "to taste" or "as needed"
-  const specialQuantities = ['to taste', 'as needed'];
-  if (
-    typeof ing.quantity === 'string' &&
-    specialQuantities.includes(ing.quantity.trim().toLowerCase())
-  ) {
-    // Move "to taste" to the end later in the line
-    ing.deferQuantityPhrase = ing.quantity.trim().toLowerCase();
-    qtyText = ''; // don’t render it here
-  }
-
   const unitText = ing.unit || '';
   const qtyUnit = [qtyText, unitText].filter(Boolean).join(' ');
 
-  // build main part
+  // Build main part
   let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
   if (qtyUnit) text = `${qtyUnit} ${text}`;
 
-  // handle prep notes and "to taste" placement more naturally
-  if (ing.deferQuantityPhrase) {
-    // if there’s a prep note, put it before the ingredient name
-    if (ing.prepNotes) {
-      text = `${ing.prepNotes} ${text}, ${ing.deferQuantityPhrase}`;
-    } else {
-      text += `, ${ing.deferQuantityPhrase}`;
-    }
-  } else if (ing.prepNotes) {
-    // normal case (non "to taste")
+  // Add prep notes
+  if (ing.prepNotes) {
     text += `, ${ing.prepNotes}`;
   }
 
-  // add parenthetical note + optional
+  // Add parenthetical note + optional
   let parens = [];
   if (ing.parentheticalNote) parens.push(ing.parentheticalNote);
   if (ing.isOptional) parens.push('optional');
@@ -98,11 +95,7 @@ function formatNeedLine(ing) {
   let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
   if (qtyUnit) text += ` (${qtyUnit})`;
 
-  // handle prep notes and optional flag
-  if (ing.prepNotes) {
-    text += `, ${ing.prepNotes}`;
-  }
-
+  // Merge optional into same parentheses
   if (ing.isOptional) {
     if (qtyUnit) {
       text = text.replace(/\)$/, ', optional)');
@@ -114,49 +107,77 @@ function formatNeedLine(ing) {
   return text.trim();
 }
 
-// --- Sort helpers ---
+// --- Debug helper: context-aware tag builder ---
+function debugTag(ing, context = 'ingredients') {
+  if (!DEBUG_MODE) return '';
+  const locList =
+    context === 'need' ? LOCATION_ORDER_NEED : LOCATION_ORDER_INGREDIENTS;
 
-// For Ingredients section: optional → name → variant (ignore location)
+  const loc = (ing.locationAtHome || '').toLowerCase();
+  const locIndex = locList.indexOf(loc);
+  const locTag =
+    (locIndex >= 0 ? `${locIndex + 1}_` : '') + (loc || 'none').slice(0, 4);
+
+  const optTag = ing.isOptional ? 'opti' : 'esse';
+  const nameTag = (ing.name || '')
+    .replace(/[^a-z]/gi, '')
+    .slice(0, 4)
+    .toLowerCase();
+  const variantTag =
+    (ing.variant || '')
+      .replace(/[^a-z]/gi, '')
+      .slice(0, 4)
+      .toLowerCase() || '----';
+
+  return ` [${optTag}, ${locTag}, ${nameTag}, ${variantTag}]`;
+}
+
+// --- Sort helper for Ingredients section ---
 function sortIngredientsForIngredients(list) {
   return [...list].sort((a, b) => {
-    // 1) Required before optional
+    // 1️⃣ Required before optional (global)
     if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
 
-    // 2) Name A–Z
+    // 2️⃣ Location (chef’s workflow order)
+    const locA = a.locationAtHome || '';
+    const locB = b.locationAtHome || '';
+    const indexA = LOCATION_ORDER_INGREDIENTS.indexOf(locA);
+    const indexB = LOCATION_ORDER_INGREDIENTS.indexOf(locB);
+    if (indexA !== indexB) return indexA - indexB;
+
+    // 3️⃣ Core name (A–Z)
     const nameA = (a.name || '').toLowerCase();
     const nameB = (b.name || '').toLowerCase();
     const nameCompare = nameA.localeCompare(nameB);
     if (nameCompare !== 0) return nameCompare;
 
-    // 3) Variant A–Z
+    // 4️⃣ Variant (A–Z)
     const variantA = (a.variant || '').toLowerCase();
     const variantB = (b.variant || '').toLowerCase();
     return variantA.localeCompare(variantB);
   });
 }
 
-// For "You will need": location → optional → name → variant
-function sortIngredients(list) {
+// --- Sort helper for You Will Need section ---
+function sortIngredientsForNeed(list) {
   return [...list].sort((a, b) => {
-    // 1) Location
+    // 1️⃣ Location (clockwise sweep)
     const locA = a.locationAtHome || '';
     const locB = b.locationAtHome || '';
-    const indexA = LOCATION_ORDER.indexOf(locA);
-    const indexB = LOCATION_ORDER.indexOf(locB);
+    const indexA = LOCATION_ORDER_NEED.indexOf(locA);
+    const indexB = LOCATION_ORDER_NEED.indexOf(locB);
     if (indexA !== indexB) return indexA - indexB;
 
-    // 2) Required before optional
-    if (a.isOptional !== b.isOptional) {
-      return a.isOptional ? 1 : -1;
-    }
+    // 2️⃣ Required before optional
+    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
 
-    // 3) Name A–Z
+    // 3️⃣ Core name (A–Z)
     const nameA = (a.name || '').toLowerCase();
     const nameB = (b.name || '').toLowerCase();
     const nameCompare = nameA.localeCompare(nameB);
     if (nameCompare !== 0) return nameCompare;
 
-    // 4) Variant A–Z
+    // 4️⃣ Variant (A–Z)
     const variantA = (a.variant || '').toLowerCase();
     const variantB = (b.variant || '').toLowerCase();
     return variantA.localeCompare(variantB);
@@ -171,7 +192,7 @@ function mergeByIngredient(list) {
   list.forEach((ing) => {
     const key = `${ing.variant || ''}|${ing.name}|${ing.locationAtHome || ''}`;
     if (!map.has(key)) {
-      map.set(key, { ...ing });
+      map.set(key, { ...ing }); // clone first instance
     } else {
       const existing = map.get(key);
       if (
@@ -189,6 +210,7 @@ function mergeByIngredient(list) {
   return merged;
 }
 
+// --- Main render function ---
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
@@ -222,12 +244,12 @@ function renderRecipe(recipe) {
           container.appendChild(subHeader);
         }
 
-        // 🔹 Sorted render for Ingredients (optional → name → variant)
         sortIngredientsForIngredients(section.ingredients).forEach((ing) => {
           const line = document.createElement('div');
           line.className = 'ingredient-line';
           const span = document.createElement('span');
-          span.textContent = formatIngredientLine(ing);
+          span.textContent =
+            formatIngredientLine(ing) + debugTag(ing, 'ingredients');
           line.appendChild(span);
           container.appendChild(line);
         });
@@ -251,13 +273,11 @@ function renderRecipe(recipe) {
       grouped[loc].push(ing);
     });
 
-    // Merge duplicates within each location
     Object.keys(grouped).forEach((loc) => {
       grouped[loc] = mergeByIngredient(grouped[loc]);
     });
 
-    // Render groups in canonical location order
-    LOCATION_ORDER.forEach((loc) => {
+    LOCATION_ORDER_NEED.forEach((loc) => {
       if (!grouped[loc] || grouped[loc].length === 0) return;
 
       if (loc) {
@@ -267,12 +287,11 @@ function renderRecipe(recipe) {
         container.appendChild(locHeader);
       }
 
-      // 🔹 Apply full sort (location → optional → name → variant)
-      sortIngredients(grouped[loc]).forEach((ing) => {
+      sortIngredientsForNeed(grouped[loc]).forEach((ing) => {
         const line = document.createElement('div');
         line.className = 'ingredient-line';
         const span = document.createElement('span');
-        span.textContent = formatNeedLine(ing);
+        span.textContent = formatNeedLine(ing) + debugTag(ing, 'need');
         line.appendChild(span);
         container.appendChild(line);
       });
@@ -391,42 +410,30 @@ function computeMeasures(ingredients) {
   function decompose(qty, unit, isLiquid) {
     if (!qty || isNaN(qty)) return;
 
-    // --- Teaspoons ---
     if (unit.includes('tsp')) {
       let remaining = qty;
       const unitMeasures = ['1 tsp', '½ tsp', '¼ tsp', '⅛ tsp'];
       for (const m of unitMeasures) {
-        while (remaining + 1e-6 >= measures[m] && qty + 1e-6 >= measures[m]) {
+        while (remaining + 1e-6 >= measures[m]) {
           found.add(m);
           remaining -= measures[m];
         }
       }
-    }
-
-    // --- Tablespoons ---
-    else if (unit.includes('tbsp')) {
+    } else if (unit.includes('tbsp')) {
       let remaining = qty;
-
       if (Math.abs(remaining - 1.5) < 1e-6) {
         found.add('1½ tbsp');
         remaining = 0;
-      } else if (Math.abs(remaining % 4) < 1e-6) {
-        const cups = remaining / 16;
-        decompose(cups, 'cup', isLiquid);
-        remaining = 0;
-      }
-
-      const unitMeasures = ['1 tbsp', '½ tbsp'];
-      for (const m of unitMeasures) {
-        while (remaining + 1e-6 >= measures[m] && qty + 1e-6 >= measures[m]) {
-          found.add(m);
-          remaining -= measures[m];
+      } else {
+        const unitMeasures = ['1 tbsp', '½ tbsp'];
+        for (const m of unitMeasures) {
+          while (remaining + 1e-6 >= measures[m]) {
+            found.add(m);
+            remaining -= measures[m];
+          }
         }
       }
-    }
-
-    // --- Cups ---
-    else if (unit.includes('cup')) {
+    } else if (unit.includes('cup')) {
       const qtyNum = Number(qty);
       if (qtyNum < 5) {
         found.add('4 cup');
@@ -462,10 +469,11 @@ function computeMeasures(ingredients) {
     if (!ing.unit || !ing.quantity) return;
     const qty = ing.quantity;
     const unit = ing.unit.toLowerCase();
+
     const name = ing.name.toLowerCase();
     const isLiquid =
       (ing.locationAtHome &&
-        ['fridge', 'freezer'].includes(ing.locationAtHome)) ||
+        ['fridge', 'above fridge'].includes(ing.locationAtHome)) ||
       name === 'water';
 
     decompose(qty, unit, isLiquid);
