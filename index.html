@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;"
+    />
     <title>Favorite Eats</title>
 
     <!-- Google Font -->
@@ -28,7 +32,8 @@
       <input type="file" id="dbLoader" accept=".db" class="file-input-hidden" />
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/sql-wasm.js"></script>
+    <!-- ✅ Local offline SQL.js -->
+    <script src="js/sql-wasm.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

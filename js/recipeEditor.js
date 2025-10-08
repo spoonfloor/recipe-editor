@@ -266,6 +266,87 @@ function sortIngredientsForNeed(list) {
   });
 }
 
+// --- Keyboard Step Reordering System (with live renumbering) ---
+function setupStepReordering(container, db, recipeId) {
+  let activeStep = null;
+
+  // click to select
+  container.addEventListener('click', (e) => {
+    const line = e.target.closest('.instruction-line');
+    if (!line || !container.contains(line)) return;
+
+    container
+      .querySelectorAll('.instruction-line.selected')
+      .forEach((el) => el.classList.remove('selected'));
+
+    line.classList.add('selected');
+    activeStep = line;
+  });
+
+  // helper: update visible numbers after reorder
+  function renumberSteps() {
+    const allSteps = container.querySelectorAll('.instruction-line.numbered');
+    allSteps.forEach((line, idx) => {
+      const num = line.querySelector('.step-num');
+      if (num) num.textContent = `${idx + 1}.`;
+    });
+  }
+
+  // keyboard handler
+  document.addEventListener('keydown', (e) => {
+    if (!activeStep) return;
+    const meta = e.metaKey || e.ctrlKey;
+    if (!meta) return;
+
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const moveUp = e.key === 'ArrowUp';
+      const sibling = moveUp
+        ? activeStep.previousElementSibling
+        : activeStep.nextElementSibling;
+
+      if (sibling && sibling.classList.contains('instruction-line')) {
+        if (moveUp) container.insertBefore(activeStep, sibling);
+        else container.insertBefore(sibling, activeStep);
+
+        // 🔹 immediately update numbers
+        renumberSteps();
+
+        // 🔹 Update in-memory database ordering
+        if (db && recipeId) {
+          const allSteps = Array.from(
+            container.querySelectorAll('.instruction-line.numbered .step-text')
+          );
+          allSteps.forEach((stepTextEl, index) => {
+            const newOrder = index + 1;
+            const newText = stepTextEl.textContent;
+            db.run(
+              `UPDATE recipe_steps SET step_number = ?, instructions = ? 
+       WHERE recipe_id = ? AND step_number = ?;`,
+              [newOrder, newText, recipeId, newOrder]
+            );
+          });
+          // mark as unsaved
+          const saveBtn = document.getElementById('editorActionBtn');
+          if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.style.opacity = '1';
+            saveBtn.style.cursor = 'pointer';
+          }
+          const cancelBtn = document.getElementById('cancelEditsBtn');
+          if (cancelBtn) {
+            cancelBtn.disabled = false;
+            cancelBtn.style.opacity = '1';
+            cancelBtn.style.cursor = 'pointer';
+          }
+
+          console.log('✅ Step order updated in DB');
+        }
+      }
+    }
+  });
+}
+
 // --- Main render function ---
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
@@ -295,7 +376,6 @@ function renderRecipe(recipe) {
           const subHeader = document.createElement('div');
           subHeader.className = 'subsection-header';
           subHeader.textContent = section.name;
-          makeEditable(subHeader, 'text');
           container.appendChild(subHeader);
         }
 
@@ -406,7 +486,6 @@ function renderRecipe(recipe) {
           const subHeader = document.createElement('div');
           subHeader.className = 'subsection-header';
           subHeader.textContent = section.name;
-          makeEditable(subHeader, 'text');
           container.appendChild(subHeader);
         }
 
@@ -422,14 +501,12 @@ function renderRecipe(recipe) {
             const text = document.createElement('span');
             text.className = 'step-text';
             text.textContent = step;
-            makeEditable(text, 'text');
             instr.appendChild(num);
             instr.appendChild(text);
           } else {
             const text = document.createElement('span');
             text.className = 'step-text';
             text.textContent = step;
-            makeEditable(text, 'text');
             instr.appendChild(text);
           }
 
@@ -438,6 +515,9 @@ function renderRecipe(recipe) {
       }
     });
   }
+  // --- Initialize step reordering ---
+  const stepContainer = document.getElementById('recipeView');
+  setupStepReordering(stepContainer, window.dbInstance, window.recipeId);
 }
 
 // --- Helpers ---

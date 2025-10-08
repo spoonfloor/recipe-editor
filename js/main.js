@@ -1,10 +1,11 @@
-// Shared SQL.js init
+// Shared SQL.js init (offline / local version)
 let SQL;
 initSqlJs({
-  locateFile: (file) =>
-    `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/${file}`,
+  locateFile: (file) => `js/${file}`, // load local sql-wasm.wasm
 }).then((sql) => {
   SQL = sql;
+
+  // --- existing page load logic ---
   if (document.body.classList.contains('recipes-page')) {
     loadRecipesPage();
   }
@@ -18,7 +19,46 @@ const loadDbBtn = document.getElementById('loadDbBtn');
 const dbLoader = document.getElementById('dbLoader');
 
 if (loadDbBtn && dbLoader) {
-  loadDbBtn.addEventListener('click', () => dbLoader.click());
+  loadDbBtn.addEventListener('click', async () => {
+    const isElectron = !!window.electronAPI;
+
+    if (isElectron) {
+      // --- Electron flow ---
+      console.log('📂 User clicked “Load Recipes” — opening picker...');
+      try {
+        // 1. Remember last folder
+        const lastPath = localStorage.getItem('favoriteEatsDbPath');
+
+        // 2. Prompt for DB file
+        let dbPath = await window.electronAPI.pickDB(lastPath);
+        if (!dbPath) {
+          alert('No database selected.');
+          return;
+        }
+
+        // 3. Save for next session
+        localStorage.setItem('favoriteEatsDbPath', dbPath);
+
+        // 4. Load and store DB bytes
+        const bytes = await window.electronAPI.loadDB(dbPath);
+        const Uints = new Uint8Array(bytes);
+        localStorage.setItem(
+          'favoriteEatsDb',
+          JSON.stringify(Array.from(Uints))
+        );
+
+        // 5. Navigate to recipes list
+        window.location.href = 'recipes.html';
+      } catch (err) {
+        console.error('❌ Error loading database:', err);
+        alert('Failed to load database — check console for details.');
+      }
+    } else {
+      // --- Browser fallback flow (no Electron) ---
+      dbLoader.click();
+    }
+  });
+
   dbLoader.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -101,6 +141,66 @@ function loadRecipesPage() {
 }
 
 // Recipe editor page logic
+// --- Save button setup ---
+const editorActionBtn = document.getElementById('editorActionBtn');
+if (editorActionBtn) {
+  // start dimmed
+  editorActionBtn.disabled = true;
+  editorActionBtn.style.opacity = '0.5';
+  editorActionBtn.style.cursor = 'not-allowed';
+
+  editorActionBtn.addEventListener('click', async () => {
+    if (editorActionBtn.disabled) return; // ignore if inactive
+
+    try {
+      const binaryArray = window.dbInstance.export();
+
+      const isElectron = !!window.electronAPI;
+      if (isElectron) {
+        console.log('💾 Attempting to save via Electron…');
+        const overwriteOnly = true; // 🔧 set true to skip backup
+        const ok = await window.electronAPI.saveDB(binaryArray, {
+          overwriteOnly,
+        });
+        if (ok) {
+          console.log('✅ Database saved to NAS successfully.');
+          alert('Database saved successfully.');
+        } else {
+          alert('Save failed — check console for details.');
+        }
+      } else {
+        // Browser fallback (download)
+        const blob = new Blob([binaryArray], {
+          type: 'application/octet-stream',
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'favorite_eats_updated.sqlite';
+        a.click();
+        URL.revokeObjectURL(url);
+        console.log('💾 Database exported (browser fallback).');
+      }
+
+      // reset buttons
+      editorActionBtn.disabled = true;
+      editorActionBtn.style.opacity = '0.5';
+      editorActionBtn.style.cursor = 'not-allowed';
+
+      const cancelBtn = document.getElementById('cancelEditsBtn');
+      if (cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.style.opacity = '0.5';
+        cancelBtn.style.cursor = 'not-allowed';
+      }
+    } catch (err) {
+      console.error('❌ Failed to save DB:', err);
+      alert('Error saving database — check console for details.');
+    }
+  });
+}
+
+// --- Recipe editor loader ---
 function loadRecipeEditorPage() {
   const stored = localStorage.getItem('favoriteEatsDb');
   if (!stored) {
@@ -109,9 +209,6 @@ function loadRecipeEditorPage() {
     return;
   }
 
-  const Uints = new Uint8Array(JSON.parse(stored));
-  const db = new SQL.Database(Uints);
-
   const recipeId = sessionStorage.getItem('selectedRecipeId');
   if (!recipeId) {
     alert('No recipe selected.');
@@ -119,40 +216,23 @@ function loadRecipeEditorPage() {
     return;
   }
 
-  // Load recipe title
-  const recipeTitleQuery = db.exec(
-    `SELECT title FROM recipes WHERE ID=${recipeId};`
-  );
-  if (recipeTitleQuery.length === 0) {
-    alert('Recipe not found.');
-    window.location.href = 'recipes.html';
-    return;
-  }
-  const recipeTitle = recipeTitleQuery[0].values[0][0];
+  // Restore database
+  const Uints = new Uint8Array(JSON.parse(stored));
+  const db = new SQL.Database(Uints);
+  window.dbInstance = db;
+  window.recipeId = recipeId;
 
-  // Update app bar title
-  const appBarTitle = document.getElementById('recipeTitle');
-  if (appBarTitle) appBarTitle.textContent = recipeTitle;
-
-  // --- Use formatter to convert DB data to human-readable recipe ---
+  // Fetch and render the recipe
   const recipe = formatRecipe(db, recipeId);
-
-  // Render recipe
+  const titleEl = document.getElementById('recipeTitle');
+  if (titleEl) titleEl.textContent = recipe.title;
   renderRecipe(recipe);
-
-  // Editor action button stub
-  const editorActionBtn = document.getElementById('editorActionBtn');
-  if (editorActionBtn) {
-    editorActionBtn.addEventListener('click', () => {
-      console.log('Editor action button clicked');
-    });
-  }
-
-  // Back button
+}
+document.addEventListener('DOMContentLoaded', () => {
   const backButton = document.getElementById('backButton');
   if (backButton) {
     backButton.addEventListener('click', () => {
       window.location.href = 'recipes.html';
     });
   }
-}
+});

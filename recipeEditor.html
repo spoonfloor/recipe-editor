@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;"
+    />
     <title>Favorite Eats - Recipe</title>
+
     <!-- Load Red Hat Mono font -->
     <link
       href="https://fonts.googleapis.com/css2?family=Red+Hat+Mono&display=swap"
@@ -13,10 +18,14 @@
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined"
     />
 
+    <!-- CSS -->
     <link rel="stylesheet" href="css/overrides.css" />
     <link rel="stylesheet" href="css/styles.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.2/sql-wasm.js"></script>
+
+    <!-- ✅ Local SQL.js (offline) -->
+    <script src="js/sql-wasm.js"></script>
   </head>
+
   <body class="recipe-editor-page">
     <div class="app-bar-wrapper no-select">
       <!-- Left/Right elements layer -->
@@ -28,17 +37,21 @@
           <span id="recipeTitle" class="title">Title</span>
         </div>
         <div class="actions">
-          <button class="button" id="editorActionBtn">Action</button>
+          <button class="button" id="cancelEditsBtn">Cancel</button>
+          <button class="button" id="editorActionBtn">Save</button>
         </div>
       </div>
     </div>
+
     <div class="recipe-wrapper">
       <div id="recipeView"></div>
     </div>
+
+    <!-- JS Modules -->
     <script src="js/utils.js"></script>
     <script src="js/ingredientRenderer.js"></script>
-    <script src="js/recipeEditor.js"></script>
     <script src="js/formatter.js"></script>
+    <script src="js/recipeEditor.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>
