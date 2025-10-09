@@ -355,8 +355,6 @@ function setupStepReordering(container, db, recipeId) {
             cancelBtn.style.opacity = '1';
             cancelBtn.style.cursor = 'pointer';
           }
-
-          console.log('✅ Step order updated in DB');
         }
       }
     }
@@ -367,18 +365,6 @@ function setupStepReordering(container, db, recipeId) {
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
-  // 🔍 Debug: log all ingredients by section
-  recipe.sections.forEach((section, idx) => {
-    console.log(
-      `🔍 Section[${idx}] "${section.name || '(no name)'}" ingredients:`,
-      section.ingredients.map((ing) => ({
-        name: ing.name,
-        qty: ing.quantity,
-        unit: ing.unit,
-        loc: ing.locationAtHome,
-      }))
-    );
-  });
 
   if (recipe.servingsDefault) {
     const servingsLine = document.createElement('div');
@@ -412,33 +398,70 @@ function renderRecipe(recipe) {
           const line = document.createElement('div');
           line.className = 'ingredient-line';
           const span = document.createElement('span');
-          const recipeText = formatIngredientLine(ing);
           const locDebug = debugTag(ing, 'ingredients');
           const measureDebug = measureDebugTag(ing, section.ingredients);
-          span.textContent = composeDisplayText(
-            recipeText,
-            locDebug,
-            measureDebug
-          );
+
+          if (ing.subRecipeId) {
+            // quantity
+            if (ing.quantity && !isNaN(parseFloat(ing.quantity))) {
+              span.appendChild(
+                document.createTextNode(
+                  decimalToFractionDisplay(parseFloat(ing.quantity)) + ' '
+                )
+              );
+            } else if (ing.quantity) {
+              span.appendChild(document.createTextNode(ing.quantity + ' '));
+            }
+
+            // unit
+            if (ing.unit) {
+              span.appendChild(document.createTextNode(ing.unit + ' '));
+            }
+
+            // clickable baseName only
+            const baseName = ing.variant
+              ? `${ing.variant} ${ing.name}`.trim()
+              : ing.name;
+            const link = document.createElement('a');
+            link.href = '#';
+            link.className = 'sub-recipe-link';
+            link.textContent = composeDisplayText(
+              baseName,
+              locDebug,
+              measureDebug
+            );
+            link.addEventListener('click', (e) => {
+              e.preventDefault();
+              sessionStorage.setItem('selectedRecipeId', ing.subRecipeId);
+              window.location.href = 'recipeEditor.html';
+            });
+            span.appendChild(link);
+
+            // optional / parenthetical
+            const bits = [];
+            if (ing.parentheticalNote) bits.push(ing.parentheticalNote);
+            if (ing.isOptional) bits.push('optional');
+            if (bits.length > 0) {
+              span.appendChild(
+                document.createTextNode(` (${bits.join(', ')})`)
+              );
+            }
+          } else {
+            // normal ingredient fallback
+            const recipeText = formatIngredientLine(ing);
+            span.textContent = composeDisplayText(
+              recipeText,
+              locDebug,
+              measureDebug
+            );
+          }
+
           line.appendChild(span);
           container.appendChild(line);
         });
       }
     });
   }
-
-  // 🔍 Debug: after Ingredients render
-  console.log(
-    '🔍 Final Ingredients section (all rendered lines):',
-    recipe.sections.flatMap((section) =>
-      sortIngredientsForDisplay(section.ingredients).map((ing) => ({
-        name: ing.name,
-        qty: ing.quantity,
-        unit: ing.unit,
-        loc: ing.locationAtHome,
-      }))
-    )
-  );
 
   // --- You will need section ---
   const allIngredients = recipe.sections.flatMap((sec) => sec.ingredients);
@@ -522,22 +545,6 @@ function renderRecipe(recipe) {
         needWrapper.appendChild(line);
       });
     }
-
-    // 🔍 Debug: after "You will need" grouping
-    console.log(
-      '🔍 Final grouped You-will-need ingredients:',
-      Object.fromEntries(
-        Object.entries(grouped).map(([loc, items]) => [
-          loc || '(no-location)',
-          items.map((ing) => ({
-            name: ing.name,
-            qty: ing.quantity,
-            unit: ing.unit,
-            loc: ing.locationAtHome,
-          })),
-        ])
-      )
-    );
   }
 
   // --- Instructions section ---

@@ -309,3 +309,14 @@ h1.nav-text {
 .you-will-need-card .section-header {
   margin-top: 4px;
 }
+
+.ingredient-line a {
+  color: var(--theme-primary);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.ingredient-line a:hover {
+  text-decoration: underline;
+  color: var(--theme-secondary);
+}

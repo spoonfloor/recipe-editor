@@ -24,7 +24,6 @@ if (loadDbBtn && dbLoader) {
 
     if (isElectron) {
       // --- Electron flow ---
-      console.log('📂 User clicked “Load Recipes” — opening picker...');
       try {
         // 1. Remember last folder
         const lastPath = localStorage.getItem('favoriteEatsDbPath');
@@ -106,9 +105,7 @@ function loadRecipesPage() {
   // --- Recipes action button stub ---
   const recipesActionBtn = document.getElementById('recipesActionBtn');
   if (recipesActionBtn) {
-    recipesActionBtn.addEventListener('click', () => {
-      console.log('Recipes action button clicked');
-    });
+    recipesActionBtn.addEventListener('click', () => {});
   }
 
   // --- Search bar logic with clear button ---
@@ -134,7 +131,6 @@ function loadRecipesPage() {
     // Log search on Enter key
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        console.log('Search submitted:', searchInput.value);
       }
     });
   }
@@ -157,13 +153,11 @@ if (editorActionBtn) {
 
       const isElectron = !!window.electronAPI;
       if (isElectron) {
-        console.log('💾 Attempting to save via Electron…');
         const overwriteOnly = true; // 🔧 set true to skip backup
         const ok = await window.electronAPI.saveDB(binaryArray, {
           overwriteOnly,
         });
         if (ok) {
-          console.log('✅ Database saved to NAS successfully.');
           alert('Database saved successfully.');
         } else {
           alert('Save failed — check console for details.');
@@ -179,7 +173,6 @@ if (editorActionBtn) {
         a.download = 'favorite_eats_updated.sqlite';
         a.click();
         URL.revokeObjectURL(url);
-        console.log('💾 Database exported (browser fallback).');
       }
 
       // reset buttons

@@ -26,7 +26,6 @@ function createWindow() {
 
 // --- File I/O helpers ---
 ipcMain.handle('loadDB', async () => {
-  console.log('📂 Loading DB from', NAS_DB_PATH);
   return fs.promises.readFile(NAS_DB_PATH);
 });
 
@@ -43,7 +42,6 @@ ipcMain.handle(
         const ts = new Date().toISOString().replace(/[:.]/g, '-');
         const backupPath = path.join(HISTORY_DIR, `favorite_eats_${ts}.sqlite`);
         fs.writeFileSync(backupPath, buffer);
-        console.log('💾 Backup created:', backupPath);
 
         // Rotate old backups
         const files = fs
@@ -58,7 +56,6 @@ ipcMain.handle(
 
       // Overwrite main DB
       fs.writeFileSync(NAS_DB_PATH, buffer);
-      console.log('✅ Saved main DB:', NAS_DB_PATH);
       return true;
     } catch (err) {
       console.error('❌ Save failed:', err);

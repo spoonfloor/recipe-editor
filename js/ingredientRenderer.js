@@ -94,7 +94,68 @@ function renderIngredient(line) {
     groupText += ` (${parenBits.join(', ')})`;
   }
 
-  textSpan.textContent = groupText;
+  // ✅ Add precise logs to see which path runs and what DOM gets built
+  if (line.subRecipeId) {
+    // clickable link only for "variant + name"
+    const link = document.createElement('a');
+    link.href = '#';
+    link.classList.add('sub-recipe-link');
+    link.textContent = baseName;
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (window.openRecipe) {
+        window.openRecipe(line.subRecipeId);
+      } else {
+        console.warn('openRecipe not available');
+      }
+    });
+
+    // Build DOM explicitly, never reusing groupText
+    if (line.quantity && !isNaN(parseFloat(line.quantity))) {
+      textSpan.appendChild(
+        document.createTextNode(
+          decimalToFractionDisplay(parseFloat(line.quantity)) + ' '
+        )
+      );
+    } else if (line.quantity) {
+      textSpan.appendChild(document.createTextNode(line.quantity + ' '));
+    }
+
+    if (line.unit) {
+      textSpan.appendChild(document.createTextNode(line.unit + ' '));
+    }
+
+    // clickable part = baseName only
+    textSpan.appendChild(link);
+
+    if (line.prepNotes) {
+      textSpan.appendChild(document.createTextNode(', ' + line.prepNotes));
+    }
+
+    if (line.substitutes && line.substitutes.length > 0) {
+      const subsText = line.substitutes.map((sub) => {
+        const subBase = sub.variant
+          ? `${sub.variant} ${sub.name}`.trim()
+          : sub.name;
+        return [sub.quantity, sub.unit, subBase].filter(Boolean).join(' ');
+      });
+      textSpan.appendChild(
+        document.createTextNode(' or ' + subsText.join(' or '))
+      );
+    }
+
+    if (line.parentheticalNote || line.isOptional) {
+      const bits = [];
+      if (line.parentheticalNote) bits.push(line.parentheticalNote);
+      if (line.isOptional) bits.push('optional');
+      textSpan.appendChild(document.createTextNode(` (${bits.join(', ')})`));
+    }
+  } else {
+    // fallback for normal ingredients
+    textSpan.textContent = groupText;
+
+    // 🔍 Also log fallback DOM
+  }
 
   // Save raw quantity separately for editing
   textSpan.dataset.rawQuantity = line.quantity || '';

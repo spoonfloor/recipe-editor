@@ -43,8 +43,6 @@ function formatRecipe(db, recipeId) {
 
     if (!q.length) return [];
 
-    console.log('🔍 loadIngredients pulled rows:', q[0].values);
-
     return q[0].values.map(
       ([
         rimId,
@@ -77,6 +75,17 @@ function formatRecipe(db, recipeId) {
             }))
           : [];
 
+        // 🔍 Try to find a matching recipe title
+        const searchTerm = [variant, name].filter(Boolean).join(' ');
+        const subRecipeQ = db.exec(
+          `SELECT ID FROM recipes 
+   WHERE LOWER(title) LIKE LOWER('%${searchTerm.replace(/'/g, "''")}%') 
+   LIMIT 1;`
+        );
+        const subRecipeId = subRecipeQ.length
+          ? subRecipeQ[0].values[0][0]
+          : null;
+
         return {
           quantity: parseFloat(qty) || qty,
           unit: unit || '',
@@ -87,6 +96,7 @@ function formatRecipe(db, recipeId) {
           isOptional: !!isOptional,
           substitutes,
           locationAtHome: locationAtHome ? locationAtHome.toLowerCase() : '',
+          subRecipeId, // add the field (can be null)
         };
       }
     );
