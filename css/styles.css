@@ -9,6 +9,7 @@
   --font-color-near-black: #191919;
   --app-bar-height: 64px;
   --header-font-size: 16px;
+  --section-card-offset: 24px;
 }
 
 /* --- Body / Layout Defaults --- */
@@ -78,11 +79,12 @@
 #recipeList li {
   cursor: pointer;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.25rem;
+  border-radius: 8px;
 }
 
 #recipeList li:hover {
-  background-color: #f0f0f0;
+  /* background-color: var(--theme-light); */
+  background-color: hsl(270, 0%, 96%);
 }
 
 /* --- App Bar Wrapper --- */
@@ -260,6 +262,50 @@ h1.nav-text {
 /* Highlight selected step for keyboard reordering */
 .instruction-line.selected {
   background-color: var(--theme-light);
-  outline: 2px solid var(--theme-primary);
-  border-radius: 6px;
+  /* outline: 2px solid var(--theme-primary); */
+  border-radius: 8px;
+  position: relative;
+  left: -10px;
+  padding-left: 10px;
+  width: calc(100% + 20px);
+}
+
+.app-bar-elements-layer .title-recipes {
+  position: relative;
+  top: -1px; /* try -1px or -2px */
+}
+
+.app-bar-elements-layer .title-editor {
+  position: relative;
+  top: 0px; /* try -1px or -2px */
+}
+
+/* .back-button {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+} */
+
+.back-arrow {
+  width: 24px;
+  height: 24px;
+  /* filter: brightness(0) invert(1); */
+  user-select: none;
+}
+
+.you-will-need-card {
+  padding-top: var(--section-card-offset);
+  padding-bottom: var(--section-card-offset);
+  padding-left: var(--section-card-offset);
+  padding-right: var(--section-card-offset);
+  border-radius: 12px;
+  margin: 24px 0;
+  background: var(--theme-light);
+  position: relative;
+  left: calc(-1 * var(--section-card-offset));
+  width: calc(100% + (2 * var(--section-card-offset)));
+}
+
+.you-will-need-card .section-header {
+  margin-top: 4px;
 }

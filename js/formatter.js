@@ -43,6 +43,8 @@ function formatRecipe(db, recipeId) {
 
     if (!q.length) return [];
 
+    console.log('🔍 loadIngredients pulled rows:', q[0].values);
+
     return q[0].values.map(
       ([
         rimId,
@@ -84,7 +86,7 @@ function formatRecipe(db, recipeId) {
           parentheticalNote: parentheticalNote || '',
           isOptional: !!isOptional,
           substitutes,
-          locationAtHome: locationAtHome ? locationAtHome.toLowerCase() : null,
+          locationAtHome: locationAtHome ? locationAtHome.toLowerCase() : '',
         };
       }
     );

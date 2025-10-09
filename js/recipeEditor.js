@@ -26,7 +26,7 @@ const MEASURE_ORDER = [
   '8 cup',
 ];
 
-// canonical order for locations (used in “You will need”)
+// --- Canonical order for locations (base version used in debug and general logic) ---
 const LOCATION_ORDER = [
   '', // null / top-level
   'fridge',
@@ -35,16 +35,32 @@ const LOCATION_ORDER = [
   'pantry',
   'cereal cabinet',
   'spices',
+  'measures',
   'fruit stand',
+  'coffee bar',
+];
+
+// --- Custom order for “You will need” section only ---
+const NEED_LOCATION_ORDER = [
+  'fridge',
+  'freezer',
+  'above fridge',
+  'pantry',
+  'cereal cabinet',
+  'spices',
+  'fruit stand',
+  'coffee bar',
+  '', // no location/misc
   'measures',
 ];
 
-// canonical order for Ingredients section (for normal reading)
+// --- Canonical order for Ingredients section (for normal reading) ---
 const INGREDIENTS_LOCATION_ORDER = [
   '', // null / top-level
   'fridge',
   'above fridge',
   'pantry',
+  'coffee bar',
   'cereal cabinet',
   'spices',
   'fruit stand',
@@ -351,6 +367,18 @@ function setupStepReordering(container, db, recipeId) {
 function renderRecipe(recipe) {
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
+  // 🔍 Debug: log all ingredients by section
+  recipe.sections.forEach((section, idx) => {
+    console.log(
+      `🔍 Section[${idx}] "${section.name || '(no name)'}" ingredients:`,
+      section.ingredients.map((ing) => ({
+        name: ing.name,
+        qty: ing.quantity,
+        unit: ing.unit,
+        loc: ing.locationAtHome,
+      }))
+    );
+  });
 
   if (recipe.servingsDefault) {
     const servingsLine = document.createElement('div');
@@ -399,13 +427,32 @@ function renderRecipe(recipe) {
     });
   }
 
+  // 🔍 Debug: after Ingredients render
+  console.log(
+    '🔍 Final Ingredients section (all rendered lines):',
+    recipe.sections.flatMap((section) =>
+      sortIngredientsForDisplay(section.ingredients).map((ing) => ({
+        name: ing.name,
+        qty: ing.quantity,
+        unit: ing.unit,
+        loc: ing.locationAtHome,
+      }))
+    )
+  );
+
   // --- You will need section ---
   const allIngredients = recipe.sections.flatMap((sec) => sec.ingredients);
   if (allIngredients.length) {
+    // 🔹 Create wrapper card
+    const needWrapper = document.createElement('div');
+    needWrapper.className = 'you-will-need-card';
+    container.appendChild(needWrapper);
+
+    // Header inside the card
     const needHeader = document.createElement('div');
     needHeader.className = 'section-header';
     needHeader.textContent = 'You will need';
-    container.appendChild(needHeader);
+    needWrapper.appendChild(needHeader);
 
     const grouped = {};
     allIngredients.forEach((ing) => {
@@ -414,55 +461,83 @@ function renderRecipe(recipe) {
       grouped[loc].push(ing);
     });
 
+    // Merge duplicates by ingredient
     Object.keys(grouped).forEach((loc) => {
       grouped[loc] = mergeByIngredient(grouped[loc]);
     });
 
-    LOCATION_ORDER.forEach((loc) => {
-      if (!grouped[loc] || grouped[loc].length === 0) return;
+    // Iterate through locations in defined order
+    NEED_LOCATION_ORDER.forEach((loc) => {
+      // ✅ Explicitly include blank '' key even though falsy
+      const hasKey = Object.prototype.hasOwnProperty.call(grouped, loc);
+      const items = hasKey ? grouped[loc] : [];
+      if (!items || items.length === 0) return;
 
+      // Only create subsection header if location is non-empty
       if (loc) {
         const locHeader = document.createElement('div');
         locHeader.className = 'subsection-header';
         locHeader.textContent = capitalizeWords(loc);
-        container.appendChild(locHeader);
+        needWrapper.appendChild(locHeader);
+      } else {
+        // Optional: add a "Misc" header for no-location
+        const miscHeader = document.createElement('div');
+        miscHeader.className = 'subsection-header';
+        miscHeader.textContent = 'Misc';
+        needWrapper.appendChild(miscHeader);
       }
 
-      // updated sort call
-      sortIngredientsForNeed(grouped[loc]).forEach((ing) => {
+      // Render each ingredient line
+      sortIngredientsForNeed(items).forEach((ing) => {
         const line = document.createElement('div');
         line.className = 'ingredient-line';
         const span = document.createElement('span');
         const recipeText = formatNeedLine(ing);
         const locDebug = debugTag(ing, 'need');
-        const measureDebug = measureDebugTag(ing, grouped[loc]);
+        const measureDebug = measureDebugTag(ing, items);
         span.textContent = composeDisplayText(
           recipeText,
           locDebug,
           measureDebug
         );
         line.appendChild(span);
-        container.appendChild(line);
+        needWrapper.appendChild(line);
       });
     });
-  }
 
-  // --- Measures section ---
-  const measures = computeMeasures(allIngredients);
-  if (measures.length) {
-    const measureHeader = document.createElement('div');
-    measureHeader.className = 'subsection-header';
-    measureHeader.textContent = 'Measures';
-    container.appendChild(measureHeader);
+    // --- Measures section (INSIDE card) ---
+    const measures = computeMeasures(allIngredients);
+    if (measures.length) {
+      const measureHeader = document.createElement('div');
+      measureHeader.className = 'subsection-header';
+      measureHeader.textContent = 'Measures';
+      needWrapper.appendChild(measureHeader);
 
-    measures.forEach((m) => {
-      const line = document.createElement('div');
-      line.className = 'ingredient-line';
-      const span = document.createElement('span');
-      span.textContent = m;
-      line.appendChild(span);
-      container.appendChild(line);
-    });
+      measures.forEach((m) => {
+        const line = document.createElement('div');
+        line.className = 'ingredient-line';
+        const span = document.createElement('span');
+        span.textContent = m;
+        line.appendChild(span);
+        needWrapper.appendChild(line);
+      });
+    }
+
+    // 🔍 Debug: after "You will need" grouping
+    console.log(
+      '🔍 Final grouped You-will-need ingredients:',
+      Object.fromEntries(
+        Object.entries(grouped).map(([loc, items]) => [
+          loc || '(no-location)',
+          items.map((ing) => ({
+            name: ing.name,
+            qty: ing.quantity,
+            unit: ing.unit,
+            loc: ing.locationAtHome,
+          })),
+        ])
+      )
+    );
   }
 
   // --- Instructions section ---

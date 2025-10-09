@@ -5,11 +5,8 @@
     <style>
       .st0 {
         fill: #fff;
-        stroke: #000;
-        stroke-miterlimit: 10;
-        stroke-width: 3.5px;
       }
     </style>
   </defs>
-  <polygon id="arrow1" data-name="arrow" class="st0" points="20 11.5 5.9 11.5 11.8 5.6 11.1 4.9 4 12 11.1 19.1 11.8 18.4 5.9 12.5 20 12.5 20 11.5"/>
+  <polygon id="arrow1" class="st0" points="20 11.5 5.9 11.5 11.8 5.6 11.1 4.9 4 12 11.1 19.1 11.8 18.4 5.9 12.5 20 12.5 20 11.5"/>
 </svg>
