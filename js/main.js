@@ -89,8 +89,16 @@ function loadRecipesPage() {
   const list = document.getElementById('recipeList');
   list.innerHTML = '';
 
+  // 🔹 Keep all recipes in memory for filtering
+  let recipeRows = [];
   if (recipes.length > 0) {
-    const rows = recipes[0].values;
+    recipeRows = recipes[0].values;
+    renderRecipeList(recipeRows);
+  }
+
+  // 🔹 Helper to render a given set of recipes
+  function renderRecipeList(rows) {
+    list.innerHTML = '';
     rows.forEach(([id, title]) => {
       const li = document.createElement('li');
       li.textContent = title;
@@ -113,24 +121,31 @@ function loadRecipesPage() {
   const clearBtn = document.querySelector('.clear-search');
 
   if (searchInput && clearBtn) {
-    // Hide clear button initially
     clearBtn.style.display = 'none';
 
-    // Show/hide clear button when typing
+    // Filter recipes as user types
     searchInput.addEventListener('input', () => {
       clearBtn.style.display = searchInput.value ? 'inline' : 'none';
+
+      const query = searchInput.value.trim().toLowerCase();
+      const filtered = recipeRows.filter(([id, title]) =>
+        title.toLowerCase().includes(query)
+      );
+      renderRecipeList(filtered);
     });
 
-    // Clear input on × click
+    // Clear input on × click and restore full list
     clearBtn.addEventListener('click', () => {
       searchInput.value = '';
       clearBtn.style.display = 'none';
+      renderRecipeList(recipeRows);
       searchInput.focus();
     });
 
-    // Log search on Enter key
+    // Prevent Enter from doing anything weird
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
+        e.preventDefault();
       }
     });
   }
