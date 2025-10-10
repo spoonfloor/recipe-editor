@@ -68,6 +68,20 @@ const INGREDIENTS_LOCATION_ORDER = [
   'measures',
 ];
 
+function enableSave() {
+  const saveBtn = document.getElementById('editorActionBtn');
+  if (saveBtn) {
+    saveBtn.disabled = false;
+  }
+}
+
+function disableSave() {
+  const saveBtn = document.getElementById('editorActionBtn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+  }
+}
+
 // --- Cancel / Dirty state tracking ---
 let isDirty = false;
 const cancelBtn = document.getElementById('cancelEditsBtn');
@@ -78,14 +92,8 @@ function markDirty() {
   if (!isDirty) {
     isDirty = true;
 
-    // Enable Cancel
     cancelBtn.disabled = false;
-
-    // ✅ Enable Save (CSS handles appearance)
-    const saveBtn = document.getElementById('editorActionBtn');
-    if (saveBtn) {
-      saveBtn.disabled = false;
-    }
+    enableSave();
 
     console.log('✏️ Page marked dirty (edits made)');
   }
@@ -97,14 +105,8 @@ function revertChanges() {
   if (window.getSelection) window.getSelection().removeAllRanges();
   isDirty = false;
 
-  // Reset Cancel
   cancelBtn.disabled = true;
-
-  // Reset Save (CSS handles appearance)
-  const saveBtn = document.getElementById('editorActionBtn');
-  if (saveBtn) {
-    saveBtn.disabled = true;
-  }
+  disableSave();
 }
 
 cancelBtn.addEventListener('click', () => {
@@ -112,6 +114,12 @@ cancelBtn.addEventListener('click', () => {
   if (isDirty) {
     console.log('↩️ Reverting...');
     revertChanges();
+
+    // 🔍 Verify Save state after revert
+    const saveBtn = document.getElementById('editorActionBtn');
+    if (saveBtn) {
+      console.log('💾 Save disabled state after revert:', saveBtn.disabled);
+    }
   } else {
     console.log('No edits to revert');
   }
@@ -128,13 +136,6 @@ document.addEventListener('keydown', (e) => {
     }
   }
 });
-
-// 🔹 Extra debugging: confirm markDirty is being called
-const originalMarkDirty = markDirty;
-markDirty = function () {
-  console.log('📌 markDirty() called');
-  originalMarkDirty();
-};
 
 // --- Format helpers ---
 function formatIngredientLine(ing) {
@@ -356,14 +357,6 @@ function setupStepReordering(container, db, recipeId) {
               [newOrder, newText, recipeId, stepId]
             );
           });
-
-          // mark as unsaved
-          const saveBtn = document.getElementById('editorActionBtn');
-          if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.style.opacity = '1';
-            saveBtn.style.cursor = 'pointer';
-          }
 
           // ✅ Always flag dirty state after successful reorder
           console.log('✏️ Changes made — calling markDirty()');

@@ -45,7 +45,7 @@
   opacity: 0.5;
   cursor: not-allowed;
   /* Remove pointer-events so cursor still changes on hover */
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 #loadDbBtn {
