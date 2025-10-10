@@ -68,6 +68,74 @@ const INGREDIENTS_LOCATION_ORDER = [
   'measures',
 ];
 
+// --- Cancel / Dirty state tracking ---
+let isDirty = false;
+const cancelBtn = document.getElementById('cancelEditsBtn');
+console.log('cancelBtn found:', cancelBtn);
+cancelBtn.disabled = true; // ✅ start disabled
+
+function markDirty() {
+  if (!isDirty) {
+    isDirty = true;
+
+    // Enable Cancel
+    cancelBtn.disabled = false;
+
+    // ✅ Enable Save (CSS handles appearance)
+    const saveBtn = document.getElementById('editorActionBtn');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+    }
+
+    console.log('✏️ Page marked dirty (edits made)');
+  }
+}
+
+function revertChanges() {
+  console.log('↩️ Reverting to pre-edit state');
+  renderRecipe(window.recipeData);
+  if (window.getSelection) window.getSelection().removeAllRanges();
+  isDirty = false;
+
+  // Reset Cancel
+  cancelBtn.disabled = true;
+
+  // Reset Save (CSS handles appearance)
+  const saveBtn = document.getElementById('editorActionBtn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+  }
+}
+
+cancelBtn.addEventListener('click', () => {
+  console.log('🛑 Cancel button clicked');
+  if (isDirty) {
+    console.log('↩️ Reverting...');
+    revertChanges();
+  } else {
+    console.log('No edits to revert');
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    console.log('⎋ Escape key pressed');
+    if (isDirty) {
+      console.log('↩️ Reverting (via Escape)...');
+      revertChanges();
+    } else {
+      console.log('No edits to revert (Escape ignored)');
+    }
+  }
+});
+
+// 🔹 Extra debugging: confirm markDirty is being called
+const originalMarkDirty = markDirty;
+markDirty = function () {
+  console.log('📌 markDirty() called');
+  originalMarkDirty();
+};
+
 // --- Format helpers ---
 function formatIngredientLine(ing) {
   let qtyText = '';
@@ -85,17 +153,13 @@ function formatIngredientLine(ing) {
   if (qtyUnit) text = `${qtyUnit} ${text}`;
 
   // add prep notes
-  if (ing.prepNotes) {
-    text += `, ${ing.prepNotes}`;
-  }
+  if (ing.prepNotes) text += `, ${ing.prepNotes}`;
 
   // add parenthetical note + optional
   let parens = [];
   if (ing.parentheticalNote) parens.push(ing.parentheticalNote);
   if (ing.isOptional) parens.push('optional');
-  if (parens.length > 0) {
-    text += ` (${parens.join(', ')})`;
-  }
+  if (parens.length > 0) text += ` (${parens.join(', ')})`;
 
   return text.trim();
 }
@@ -116,11 +180,8 @@ function formatNeedLine(ing) {
 
   // merge optional into same parentheses
   if (ing.isOptional) {
-    if (qtyUnit) {
-      text = text.replace(/\)$/, ', optional)');
-    } else {
-      text += ' (optional)';
-    }
+    if (qtyUnit) text = text.replace(/\)$/, ', optional)');
+    else text += ' (optional)';
   }
 
   return text.trim();
@@ -137,9 +198,7 @@ function sortIngredients(list, locationOrder = INGREDIENTS_LOCATION_ORDER) {
     if (locIndexA !== locIndexB) return locIndexA - locIndexB;
 
     // 2. required before optional
-    if (a.isOptional !== b.isOptional) {
-      return a.isOptional ? 1 : -1;
-    }
+    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
 
     // 3. alphabetical by core name
     const nameA = a.name.toLowerCase();
@@ -218,68 +277,12 @@ function measureDebugTag(ing, allIngredients = []) {
   return `${id}, ${measure}`;
 }
 
-/**
- * Build a display string according to active debug settings
- */
 function composeDisplayText(recipeText, locDebug, measureDebug) {
   const parts = [];
   if (SHOW_RECIPE_TEXT && recipeText) parts.push(recipeText);
   if (SHOW_DEBUG_LOC_TAGS && locDebug) parts.push(locDebug);
   if (SHOW_DEBUG_MEASURE_TAGS && measureDebug) parts.push(measureDebug);
   return parts.join(' | ');
-}
-
-// --- Sort helpers ---
-function sortIngredientsForDisplay(list) {
-  return [...list].sort((a, b) => {
-    // 1. Section order (if provided)
-    if (a.sectionIndex !== undefined && b.sectionIndex !== undefined) {
-      if (a.sectionIndex !== b.sectionIndex)
-        return a.sectionIndex - b.sectionIndex;
-    }
-
-    // 2. Required before optional
-    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
-
-    // 3. Location order (INGREDIENTS_LOCATION_ORDER)
-    const locOrder = INGREDIENTS_LOCATION_ORDER;
-    const aLoc = a.locationAtHome || '';
-    const bLoc = b.locationAtHome || '';
-    const iA = locOrder.indexOf(aLoc);
-    const iB = locOrder.indexOf(bLoc);
-    if (iA !== iB) return iA - iB;
-
-    // 4–5. Core name → variant
-    const nameA = a.name.toLowerCase();
-    const nameB = b.name.toLowerCase();
-    if (nameA !== nameB) return nameA.localeCompare(nameB);
-    const varA = (a.variant || '').toLowerCase();
-    const varB = (b.variant || '').toLowerCase();
-    return varA.localeCompare(varB);
-  });
-}
-
-function sortIngredientsForNeed(list) {
-  return [...list].sort((a, b) => {
-    // 1. Physical-location order (LOCATION_ORDER)
-    const locOrder = LOCATION_ORDER;
-    const aLoc = a.locationAtHome || '';
-    const bLoc = b.locationAtHome || '';
-    const iA = locOrder.indexOf(aLoc);
-    const iB = locOrder.indexOf(bLoc);
-    if (iA !== iB) return iA - iB;
-
-    // 2. Required before optional
-    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
-
-    // 3–4. Core name → variant
-    const nameA = a.name.toLowerCase();
-    const nameB = b.name.toLowerCase();
-    if (nameA !== nameB) return nameA.localeCompare(nameB);
-    const varA = (a.variant || '').toLowerCase();
-    const varB = (b.variant || '').toLowerCase();
-    return varA.localeCompare(varB);
-  });
 }
 
 // --- Keyboard Step Reordering System (with live renumbering) ---
@@ -336,12 +339,24 @@ function setupStepReordering(container, db, recipeId) {
           allSteps.forEach((stepTextEl, index) => {
             const newOrder = index + 1;
             const newText = stepTextEl.textContent;
+            const stepId = stepTextEl.dataset.stepId;
+
+            if (!stepId) {
+              console.warn(
+                '⚠️ Skipping update — missing stepId for:',
+                stepTextEl
+              );
+              return;
+            }
+
             db.run(
-              `UPDATE recipe_steps SET step_number = ?, instructions = ? 
-       WHERE recipe_id = ? AND step_number = ?;`,
-              [newOrder, newText, recipeId, newOrder]
+              `UPDATE recipe_steps 
+                 SET step_number = ?, instructions = ? 
+                 WHERE recipe_id = ? AND ID = ?;`,
+              [newOrder, newText, recipeId, stepId]
             );
           });
+
           // mark as unsaved
           const saveBtn = document.getElementById('editorActionBtn');
           if (saveBtn) {
@@ -349,12 +364,10 @@ function setupStepReordering(container, db, recipeId) {
             saveBtn.style.opacity = '1';
             saveBtn.style.cursor = 'pointer';
           }
-          const cancelBtn = document.getElementById('cancelEditsBtn');
-          if (cancelBtn) {
-            cancelBtn.disabled = false;
-            cancelBtn.style.opacity = '1';
-            cancelBtn.style.cursor = 'pointer';
-          }
+
+          // ✅ Always flag dirty state after successful reorder
+          console.log('✏️ Changes made — calling markDirty()');
+          markDirty();
         }
       }
     }
@@ -363,6 +376,12 @@ function setupStepReordering(container, db, recipeId) {
 
 // --- Main render function ---
 function renderRecipe(recipe) {
+  // 🔹 Keep a copy for cancel/revert
+  window.recipeData = JSON.parse(JSON.stringify(recipe));
+
+  // ❌ Removed recursive revertChanges() call
+  // Initial reset now handled in loadRecipeEditorPage()
+
   const container = document.getElementById('recipeView');
   container.innerHTML = '';
 
@@ -380,7 +399,7 @@ function renderRecipe(recipe) {
     ingHeader.textContent = 'Ingredients';
     container.appendChild(ingHeader);
 
-    recipe.sections.forEach((section, index) => {
+    recipe.sections.forEach((section) => {
       if (
         section.ingredients.length &&
         (section.contexts.includes('ingredients') ||
@@ -394,7 +413,7 @@ function renderRecipe(recipe) {
         }
 
         // updated sort call
-        sortIngredientsForDisplay(section.ingredients).forEach((ing) => {
+        sortIngredients(section.ingredients).forEach((ing) => {
           const line = document.createElement('div');
           line.className = 'ingredient-line';
           const span = document.createElement('span');
@@ -491,27 +510,23 @@ function renderRecipe(recipe) {
 
     // Iterate through locations in defined order
     NEED_LOCATION_ORDER.forEach((loc) => {
-      // ✅ Explicitly include blank '' key even though falsy
       const hasKey = Object.prototype.hasOwnProperty.call(grouped, loc);
       const items = hasKey ? grouped[loc] : [];
       if (!items || items.length === 0) return;
 
-      // Only create subsection header if location is non-empty
       if (loc) {
         const locHeader = document.createElement('div');
         locHeader.className = 'subsection-header';
         locHeader.textContent = capitalizeWords(loc);
         needWrapper.appendChild(locHeader);
       } else {
-        // Optional: add a "Misc" header for no-location
         const miscHeader = document.createElement('div');
         miscHeader.className = 'subsection-header';
         miscHeader.textContent = 'Misc';
         needWrapper.appendChild(miscHeader);
       }
 
-      // Render each ingredient line
-      sortIngredientsForNeed(items).forEach((ing) => {
+      sortIngredients(items, NEED_LOCATION_ORDER).forEach((ing) => {
         const line = document.createElement('div');
         line.className = 'ingredient-line';
         const span = document.createElement('span');
@@ -548,11 +563,7 @@ function renderRecipe(recipe) {
   }
 
   // --- Instructions section ---
-  if (
-    recipe.sections.some(
-      (sec) => sec.steps.length || (!sec.name && sec.ingredients.length)
-    )
-  ) {
+  if (recipe.sections.some((sec) => sec.steps.length)) {
     const stepHeader = document.createElement('div');
     stepHeader.className = 'section-header';
     stepHeader.textContent = 'Instructions';
@@ -572,32 +583,30 @@ function renderRecipe(recipe) {
         }
 
         section.steps.forEach((step, index) => {
+          console.log('🔎 Step object during render:', step);
+
           const instr = document.createElement('div');
-          instr.className = 'instruction-line';
+          instr.className = 'instruction-line numbered';
 
-          if (section.steps.length > 1) {
-            instr.classList.add('numbered');
-            const num = document.createElement('span');
-            num.className = 'step-num';
-            num.textContent = index + 1 + '.';
-            const text = document.createElement('span');
-            text.className = 'step-text';
-            text.textContent = step;
-            instr.appendChild(num);
-            instr.appendChild(text);
-          } else {
-            const text = document.createElement('span');
-            text.className = 'step-text';
-            text.textContent = step;
-            instr.appendChild(text);
-          }
+          const num = document.createElement('span');
+          num.className = 'step-num';
+          num.textContent = index + 1 + '.';
 
+          const text = document.createElement('span');
+          text.className = 'step-text';
+          text.textContent = step.instructions;
+
+          // ✅ Always set stepId (safe cast to string)
+          text.dataset.stepId = String(step.ID);
+
+          instr.appendChild(num);
+          instr.appendChild(text);
           container.appendChild(instr);
         });
       }
     });
   }
-  // --- Initialize step reordering ---
+
   const stepContainer = document.getElementById('recipeView');
   setupStepReordering(stepContainer, window.dbInstance, window.recipeId);
 }
@@ -607,19 +616,10 @@ function capitalizeWords(str) {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/**
- * Compute actual required household measures (canonical)
- */
-/**
- * Decompose quantity into minimal canonical measures
- */
-/**
- * Compute actual required household measures (canonical)
- */
+// --- Compute Measures ---
 function computeMeasures(ingredients) {
   const found = new Set();
 
-  // Canonical measures in base units
   const measures = {
     '⅛ tsp': 0.125,
     '¼ tsp': 0.25,
@@ -640,7 +640,6 @@ function computeMeasures(ingredients) {
     '8 cup': 8,
   };
 
-  // Helper to pick nearest dry-cup size for small or remainder volumes
   function addDryCup(qtyNum) {
     const dryCups = [
       '⅛ cup',
@@ -666,7 +665,6 @@ function computeMeasures(ingredients) {
   function decompose(qty, unit, isLiquid) {
     if (!qty || isNaN(qty)) return;
 
-    // --- Teaspoons ---
     if (unit.includes('tsp')) {
       let remaining = qty;
       const unitMeasures = ['1 tsp', '½ tsp', '¼ tsp', '⅛ tsp'];
@@ -676,19 +674,12 @@ function computeMeasures(ingredients) {
           remaining -= measures[m];
         }
       }
-    }
-
-    // --- Tablespoons ---
-    else if (unit.includes('tbsp')) {
+    } else if (unit.includes('tbsp')) {
       let remaining = qty;
-
-      // Special case: exactly 1.5 tbsp → prefer "1½ tbsp"
       if (Math.abs(remaining - 1.5) < 1e-6) {
         found.add('1½ tbsp');
         remaining = 0;
       }
-
-      // Otherwise, decompose into 1 tbsp + ½ tbsp
       const unitMeasures = ['1 tbsp', '½ tbsp'];
       for (const m of unitMeasures) {
         while (remaining + 1e-6 >= measures[m]) {
@@ -696,56 +687,21 @@ function computeMeasures(ingredients) {
           remaining -= measures[m];
         }
       }
-    }
-
-    // --- Cups ---
-    else if (unit.includes('cup')) {
+    } else if (unit.includes('cup')) {
       const qtyNum = Number(qty);
-
-      // Helper: choose dry measure for small or remainder volumes
-      function addDryCup(qtyNum) {
-        const dryCups = [
-          '⅛ cup',
-          '¼ cup',
-          '⅓ cup',
-          '½ cup',
-          '⅔ cup',
-          '¾ cup',
-          '1 cup',
-        ];
-        for (const m of dryCups) {
-          if (Math.abs(qtyNum - measures[m]) < 0.01) {
-            found.add(m);
-            return;
-          }
-          if (qtyNum < measures[m]) {
-            found.add(m);
-            return;
-          }
-        }
-      }
-
-      // Helper: choose the correct liquid vessel (1, 2, 4, or 8 cup)
       function chooseLiquidMeasure(qtyCups) {
         if (qtyCups <= 1.25) return '1 cup';
         if (qtyCups <= 2.5) return '2 cup';
         if (qtyCups <= 5.5) return '4 cup';
         return '8 cup';
       }
-
-      // --- Main logic ---
       if (qtyNum <= 1.25) {
-        // Case A: small volumes → dry cups only
         addDryCup(qtyNum);
       } else {
-        // Case B: liquid vessel territory
         const mainVessel = chooseLiquidMeasure(qtyNum);
         found.add(mainVessel);
-
         const mainSize = measures[mainVessel];
         const remainder = qtyNum % mainSize;
-
-        // Add a small dry-cup top-up if remainder < 1.25 cups
         if (remainder > 0 && remainder < 1.25) {
           addDryCup(remainder);
         }
@@ -753,13 +709,10 @@ function computeMeasures(ingredients) {
     }
   }
 
-  // Process all ingredients
   ingredients.forEach((ing) => {
     if (!ing.unit || !ing.quantity) return;
     const qty = ing.quantity;
     const unit = ing.unit.toLowerCase();
-
-    // 🔹 Treat fridge/above-fridge as liquid; freezer is *not* liquid.
     const loc = (ing.locationAtHome || '').toLowerCase();
     const name = ing.name.toLowerCase();
     const isLiquid =
@@ -767,7 +720,6 @@ function computeMeasures(ingredients) {
       ['water', 'broth', 'sauce', 'oil', 'vinegar', 'juice'].some((w) =>
         name.includes(w)
       );
-
     decompose(qty, unit, isLiquid);
   });
 

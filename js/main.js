@@ -142,8 +142,6 @@ const editorActionBtn = document.getElementById('editorActionBtn');
 if (editorActionBtn) {
   // start dimmed
   editorActionBtn.disabled = true;
-  editorActionBtn.style.opacity = '0.5';
-  editorActionBtn.style.cursor = 'not-allowed';
 
   editorActionBtn.addEventListener('click', async () => {
     if (editorActionBtn.disabled) return; // ignore if inactive
@@ -175,16 +173,9 @@ if (editorActionBtn) {
         URL.revokeObjectURL(url);
       }
 
-      // reset buttons
-      editorActionBtn.disabled = true;
-      editorActionBtn.style.opacity = '0.5';
-      editorActionBtn.style.cursor = 'not-allowed';
-
-      const cancelBtn = document.getElementById('cancelEditsBtn');
-      if (cancelBtn) {
-        cancelBtn.disabled = true;
-        cancelBtn.style.opacity = '0.5';
-        cancelBtn.style.cursor = 'not-allowed';
+      // ✅ Use central revert logic to reset both Save + Cancel
+      if (typeof revertChanges === 'function') {
+        revertChanges();
       }
     } catch (err) {
       console.error('❌ Failed to save DB:', err);
@@ -220,6 +211,12 @@ function loadRecipeEditorPage() {
   const titleEl = document.getElementById('recipeTitle');
   if (titleEl) titleEl.textContent = recipe.title;
   renderRecipe(recipe);
+
+  // ✅ One-time reset after first render
+  if (typeof revertChanges === 'function') {
+    console.log('🔄 Initial reset after first render (main.js)');
+    revertChanges();
+  }
 }
 document.addEventListener('DOMContentLoaded', () => {
   const backButton = document.getElementById('backButton');

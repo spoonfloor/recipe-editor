@@ -104,12 +104,14 @@ function formatRecipe(db, recipeId) {
 
   function loadSteps(whereClause) {
     const q = db.exec(
-      `SELECT instructions
+      `SELECT ID, instructions
        FROM recipe_steps
        WHERE recipe_id=${recipeId} AND ${whereClause}
        ORDER BY step_number;`
     );
-    return q.length ? q[0].values.map((r) => r[0]) : [];
+    return q.length
+      ? q[0].values.map(([id, instructions]) => ({ ID: id, instructions }))
+      : [];
   }
 
   // Build sections

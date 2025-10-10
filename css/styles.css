@@ -31,14 +31,21 @@
   font-weight: inherit;
   line-height: inherit;
   padding: 0 1.5rem;
-  cursor: pointer;
-  background: var(--theme-secondary); /* was black */
+  background: var(--theme-secondary);
   color: white;
   border: none;
   border-radius: 9999px;
   outline: none;
-  cursor: pointer;
   height: 44px;
+  cursor: pointer;
+}
+
+/* Disabled state overrides */
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  /* Remove pointer-events so cursor still changes on hover */
+  pointer-events: auto;
 }
 
 #loadDbBtn {
