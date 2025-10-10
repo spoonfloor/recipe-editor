@@ -214,7 +214,6 @@ function loadRecipeEditorPage() {
 
   // ✅ One-time reset after first render
   if (typeof revertChanges === 'function') {
-    console.log('🔄 Initial reset after first render (main.js)');
     revertChanges();
   }
 }

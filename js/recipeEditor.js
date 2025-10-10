@@ -85,7 +85,6 @@ function disableSave() {
 // --- Cancel / Dirty state tracking ---
 let isDirty = false;
 const cancelBtn = document.getElementById('cancelEditsBtn');
-console.log('cancelBtn found:', cancelBtn);
 cancelBtn.disabled = true; // ✅ start disabled
 
 function markDirty() {
@@ -94,13 +93,10 @@ function markDirty() {
 
     cancelBtn.disabled = false;
     enableSave();
-
-    console.log('✏️ Page marked dirty (edits made)');
   }
 }
 
 function revertChanges() {
-  console.log('↩️ Reverting to pre-edit state');
   renderRecipe(window.recipeData);
   if (window.getSelection) window.getSelection().removeAllRanges();
   isDirty = false;
@@ -110,29 +106,20 @@ function revertChanges() {
 }
 
 cancelBtn.addEventListener('click', () => {
-  console.log('🛑 Cancel button clicked');
   if (isDirty) {
-    console.log('↩️ Reverting...');
     revertChanges();
 
-    // 🔍 Verify Save state after revert
     const saveBtn = document.getElementById('editorActionBtn');
     if (saveBtn) {
-      console.log('💾 Save disabled state after revert:', saveBtn.disabled);
+      // no-op: intentionally left without logging
     }
-  } else {
-    console.log('No edits to revert');
   }
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    console.log('⎋ Escape key pressed');
     if (isDirty) {
-      console.log('↩️ Reverting (via Escape)...');
       revertChanges();
-    } else {
-      console.log('No edits to revert (Escape ignored)');
     }
   }
 });
@@ -359,7 +346,6 @@ function setupStepReordering(container, db, recipeId) {
           });
 
           // ✅ Always flag dirty state after successful reorder
-          console.log('✏️ Changes made — calling markDirty()');
           markDirty();
         }
       }
@@ -576,8 +562,6 @@ function renderRecipe(recipe) {
         }
 
         section.steps.forEach((step, index) => {
-          console.log('🔎 Step object during render:', step);
-
           const instr = document.createElement('div');
           instr.className = 'instruction-line numbered';
 
