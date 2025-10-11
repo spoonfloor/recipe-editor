@@ -290,16 +290,23 @@ function setupStepReordering(container, db, recipeId) {
     activeStep = line;
   });
 
-  // helper: update visible numbers after reorder
+  // --- Helper: renumber visible steps ---
   function renumberSteps() {
-    const allSteps = container.querySelectorAll('.instruction-line.numbered');
-    allSteps.forEach((line, idx) => {
-      const num = line.querySelector('.step-num');
-      if (num) num.textContent = `${idx + 1}.`;
+    const steps = Array.from(
+      container.querySelectorAll('.instruction-line.numbered')
+    );
+    steps.forEach((el, i) => {
+      const num = el.querySelector('.step-num');
+      if (num) num.textContent = i + 1 + '.';
     });
   }
 
-  // keyboard handler
+  // --- Helper: insertAfter (fixes leapfrogging) ---
+  function insertAfter(newNode, referenceNode) {
+    referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+  }
+
+  // --- Arrow key reorder (Ctrl/⌘ + ↑/↓) ---
   document.addEventListener('keydown', (e) => {
     if (!activeStep) return;
     const meta = e.metaKey || e.ctrlKey;
@@ -307,48 +314,42 @@ function setupStepReordering(container, db, recipeId) {
 
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       e.preventDefault();
-      const moveUp = e.key === 'ArrowUp';
-      const sibling = moveUp
-        ? activeStep.previousElementSibling
-        : activeStep.nextElementSibling;
 
-      if (sibling && sibling.classList.contains('instruction-line')) {
-        if (moveUp) container.insertBefore(activeStep, sibling);
-        else container.insertBefore(sibling, activeStep);
+      const steps = Array.from(
+        container.querySelectorAll('.instruction-line.numbered')
+      );
+      const idx = steps.indexOf(activeStep);
+      if (idx === -1) return;
 
-        // 🔹 immediately update numbers
-        renumberSteps();
+      console.log('⬇️ Key pressed:', e.key);
+      console.log(
+        'Before move → active step text:',
+        activeStep.querySelector('.step-text').textContent
+      );
+      console.log('Before move → active step index:', idx);
 
-        // 🔹 Update in-memory database ordering
-        if (db && recipeId) {
-          const allSteps = Array.from(
-            container.querySelectorAll('.instruction-line.numbered .step-text')
-          );
-          allSteps.forEach((stepTextEl, index) => {
-            const newOrder = index + 1;
-            const newText = stepTextEl.textContent;
-            const stepId = stepTextEl.dataset.stepId;
-
-            if (!stepId) {
-              console.warn(
-                '⚠️ Skipping update — missing stepId for:',
-                stepTextEl
-              );
-              return;
-            }
-
-            db.run(
-              `UPDATE recipe_steps 
-                 SET step_number = ?, instructions = ? 
-                 WHERE recipe_id = ? AND ID = ?;`,
-              [newOrder, newText, recipeId, stepId]
-            );
-          });
-
-          // ✅ Always flag dirty state after successful reorder
-          markDirty();
-        }
+      if (e.key === 'ArrowUp' && idx > 0) {
+        container.insertBefore(activeStep, steps[idx - 1]);
       }
+
+      if (e.key === 'ArrowDown' && idx < steps.length - 1) {
+        insertAfter(activeStep, steps[idx + 1]); // 🔥 FIX
+      }
+
+      // Recalculate steps after move
+      const newSteps = Array.from(
+        container.querySelectorAll('.instruction-line.numbered')
+      );
+      const newIdx = newSteps.indexOf(activeStep);
+
+      console.log(
+        'After move → active step text:',
+        activeStep.querySelector('.step-text').textContent
+      );
+      console.log('After move → new index:', newIdx);
+
+      // ✅ Renumber after move
+      renumberSteps();
     }
   });
 }
