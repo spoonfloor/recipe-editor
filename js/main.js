@@ -142,16 +142,10 @@ function loadRecipesPage() {
       searchInput.focus();
     });
 
-    // Handle Enter and Escape keys
+    // Prevent Enter from doing anything weird
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-      } else if (e.key === 'Escape') {
-        // Same effect as clicking the × button
-        searchInput.value = '';
-        clearBtn.style.display = 'none';
-        renderRecipeList(recipeRows);
-        searchInput.focus();
       }
     });
   }
