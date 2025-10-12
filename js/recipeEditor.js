@@ -293,47 +293,65 @@ function renderRecipe(recipe) {
     }
   }
 
-  // --- Clear & rebuild container
+  // --- Clear & rebuild container (Phase 1: full-section scaffold)
   const container = document.getElementById('recipeView');
-  container.innerHTML = `
-    <div id="ingredientsSection"></div>
-    <div id="stepsSection">
-      <h2 class="section-header">Instructions</h2>
-    </div>
-  `;
+  container.innerHTML = '';
 
-  // ✅ Optional: render servings info at top of ingredients section
-  if (recipe.servingsDefault) {
-    const servingsLine = document.createElement('div');
-    servingsLine.className = 'servings-line';
-    servingsLine.textContent = `Serves ${recipe.servingsDefault}`;
-    const ingredientsSection = container.querySelector('#ingredientsSection');
-    ingredientsSection.appendChild(servingsLine);
-  }
+  // ✅ If recipe.sections exists, render by section
+  if (Array.isArray(recipe.sections)) {
+    recipe.sections.forEach((section) => {
+      const sectionEl = document.createElement('div');
+      sectionEl.className = 'recipe-section';
 
-  // ✅ Render steps (instructions)
-  const stepsSection = container.querySelector('#stepsSection');
-  if (recipe.steps && recipe.steps.length > 0) {
-    recipe.steps.forEach((step, i) => {
-      const line = document.createElement('div');
-      line.className = 'instruction-line numbered';
-      line.innerHTML = `
-        <span class="step-num">${i + 1}.</span>
-        <span class="step-text" data-step-id="${step.id}">
-          ${step.instructions}
-        </span>
-      `;
-      stepsSection.appendChild(line);
+      // 🏷 Section name
+      if (section.name) {
+        const header = document.createElement('h2');
+        header.className = 'section-header';
+        header.textContent = section.name;
+        sectionEl.appendChild(header);
+      }
+
+      // 🧂 Ingredients list
+      if (section.ingredients && section.ingredients.length > 0) {
+        const ingredientsEl = document.createElement('div');
+        ingredientsEl.className = 'ingredients-list';
+        section.ingredients.forEach((ing) => {
+          ingredientsEl.appendChild(renderIngredient(ing));
+        });
+        sectionEl.appendChild(ingredientsEl);
+      }
+
+      // 🪜 Steps list
+      if (section.steps && section.steps.length > 0) {
+        const stepsEl = document.createElement('div');
+        stepsEl.className = 'steps-list';
+        section.steps.forEach((step, i) => {
+          const line = document.createElement('div');
+          line.className = 'instruction-line numbered';
+          line.innerHTML = `
+            <span class="step-num">${i + 1}.</span>
+            <span class="step-text" data-step-id="${step.ID || step.id}">
+              ${step.instructions}
+            </span>
+          `;
+          stepsEl.appendChild(line);
+        });
+        sectionEl.appendChild(stepsEl);
+      }
+
+      container.appendChild(sectionEl);
     });
-
-    // ✅ Enable reordering on rendered steps
-    setupStepReordering(stepsSection, window.db, recipe.id);
   } else {
-    const noSteps = document.createElement('div');
-    noSteps.className = 'empty-state';
-    noSteps.textContent = 'No instructions found.';
-    stepsSection.appendChild(noSteps);
+    // Fallback if no structured sections exist
+    const fallback = document.createElement('div');
+    fallback.className = 'empty-state';
+    fallback.textContent = 'No sections found for this recipe.';
+    container.appendChild(fallback);
   }
+
+  // ✅ Keep reordering call for legacy steps section
+  const maybeSteps = document.getElementById('stepsSection');
+  if (maybeSteps) setupStepReordering(maybeSteps, window.db, recipe.id);
 
   // --- Log summary for debugging
   console.log(
