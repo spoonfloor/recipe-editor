@@ -208,11 +208,61 @@ async function saveRecipeToDB() {
 
   console.log('✅ Changes saved to DB (memory)');
 
-  // ✅ Return updated recipe so Cancel uses fresh snapshot
+  //
+  //
+
+  // ✅ Rebuild a full structured recipe object for renderRecipe()
   const recipeId = window.recipeId;
-  const res = db.exec(`SELECT * FROM recipes WHERE ID = ${recipeId};`);
-  const savedRecipe = res.length ? res[0].values[0] : null;
-  return savedRecipe;
+
+  // Pull base info
+  const recipeRes = db.exec(`
+    SELECT ID, title, servings_default, servings_min, servings_max
+    FROM recipes WHERE ID = ${recipeId};
+  `);
+  const row = recipeRes.length ? recipeRes[0].values[0] : null;
+  if (!row) return null;
+
+  const recipe = {
+    ID: row[0],
+    title: row[1],
+    servingsDefault: row[2],
+    servingsMin: row[3],
+    servingsMax: row[4],
+    sections: [],
+  };
+
+  // Pull all steps for this recipe
+  const stepRows = db.exec(`
+    SELECT ID, section_id, step_number, instructions
+    FROM recipe_steps
+    WHERE recipe_id = ${recipeId}
+    ORDER BY step_number;
+  `);
+
+  if (stepRows.length) {
+    const steps = stepRows[0].values.map(
+      ([ID, section_id, step_number, instructions]) => ({
+        ID,
+        section_id,
+        step_number,
+        instructions,
+      })
+    );
+    recipe.sections.push({ name: '(unnamed)', steps });
+  }
+
+  // 🧾 Proof log — confirm structure before returning
+  console.log(
+    `🧾 saved recipe: ${recipe.title} — ${
+      recipe.sections[0]?.steps?.length || 0
+    } steps`
+  );
+
+  return recipe;
+  //
+  //
+  //
+  //
 }
 
 //
