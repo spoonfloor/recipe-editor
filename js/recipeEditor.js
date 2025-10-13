@@ -107,11 +107,17 @@ function markDirty() {
 }
 
 function revertChanges() {
-  renderRecipe(window.recipeData);
-  if (window.getSelection) window.getSelection().removeAllRanges();
-  clearSelectedStep(); // 🧹 clear any selected line
-  isDirty = false;
+  // ✅ Prefer fresh nested sections for restore (supports refactored structure)
+  const restoreSource = window.recipeData?.sections
+    ? JSON.parse(JSON.stringify(window.recipeData))
+    : window.recipeData;
 
+  renderRecipe(restoreSource);
+
+  // Clean up selection and UI state
+  if (window.getSelection) window.getSelection().removeAllRanges();
+  clearSelectedStep();
+  isDirty = false;
   cancelBtn.disabled = true;
   disableSave();
 }
@@ -134,7 +140,14 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// --- Save / Cancel Integration ---
+//
+//
+//
+//
+//
+//
+
+// --- Save / Cancel Integration (Option A: robust fix) ---
 const saveBtn = document.getElementById('editorActionBtn');
 if (saveBtn) {
   saveBtn.addEventListener('click', async () => {
@@ -142,32 +155,50 @@ if (saveBtn) {
 
     console.log('💾 Saving changes...');
     try {
-      await saveRecipeToDB();
+      const savedRecipe = await saveRecipeToDB();
       console.log('✅ Changes saved to DB');
-    } catch (err) {
-      console.error('❌ Save failed:', err);
-    } finally {
+
+      if (savedRecipe) {
+        // 🧠 Update in-memory snapshot so Cancel restores the *latest* order
+        window.recipeData = JSON.parse(JSON.stringify(savedRecipe));
+        renderRecipe(window.recipeData);
+        console.log('🧠 Snapshot updated after save');
+      }
+
       isDirty = false;
       cancelBtn.disabled = true;
       disableSave();
       clearSelectedStep(); // 🧹 remove highlight after save
+    } catch (err) {
+      console.error('❌ Save failed:', err);
     }
   });
 }
 
+// --- Durable database update ---
 async function saveRecipeToDB() {
   const steps = Array.from(
     document.querySelectorAll('.instruction-line.numbered .step-text')
   );
 
+  // Ensure the database reference exists
+  const db = window.dbInstance;
+  if (!db)
+    throw new Error('Database not initialized (window.dbInstance missing)');
+
   steps.forEach((stepTextEl, index) => {
+    //
+    //
+    //
+    //
+
     const newOrder = index + 1;
     const newText = stepTextEl.textContent.trim();
     const stepId = stepTextEl.dataset.stepId;
     if (!stepId) return;
 
-    // 🧠 DB write: update both step order + text
-    window.db.run(
+    // 🧠 Write changes directly into SQL.js memory
+    db.run(
       `UPDATE recipe_steps
          SET step_number = ?, instructions = ?
        WHERE ID = ?;`,
@@ -175,8 +206,19 @@ async function saveRecipeToDB() {
     );
   });
 
-  console.log('✅ Changes saved to DB');
+  console.log('✅ Changes saved to DB (memory)');
+
+  // ✅ Return updated recipe so Cancel uses fresh snapshot
+  const recipeId = window.recipeId;
+  const res = db.exec(`SELECT * FROM recipes WHERE ID = ${recipeId};`);
+  const savedRecipe = res.length ? res[0].values[0] : null;
+  return savedRecipe;
 }
+
+//
+//
+//
+//
 
 // --- Keyboard Step Reordering System (with live renumbering) ---
 function setupStepReordering(container, db, recipeId) {
@@ -309,6 +351,37 @@ function renderRecipe(recipe) {
     servingsLine.textContent = `Serves ${recipe.servingsDefault}`;
     const ingredientsSection = container.querySelector('#ingredientsSection');
     ingredientsSection.appendChild(servingsLine);
+  }
+
+  if (recipe.sections && recipe.sections.length > 0) {
+    const ingredientsHeader = document.createElement('h2');
+    ingredientsHeader.className = 'section-header';
+    ingredientsHeader.textContent = 'Ingredients';
+    const ingredientsSection = container.querySelector('#ingredientsSection');
+    ingredientsSection.appendChild(ingredientsHeader);
+
+    // Flatten all ingredients across sections
+    const allIngredients = recipe.sections.flatMap((s) => s.ingredients || []);
+    allIngredients.forEach((ing) => {
+      const line = document.createElement('div');
+      line.className = 'ingredient-line';
+      const span = document.createElement('span');
+
+      // Build display like "¾ cup pine nuts"
+      const qty =
+        ing.quantity && !isNaN(parseFloat(ing.quantity))
+          ? decimalToFractionDisplay(parseFloat(ing.quantity)) + ' '
+          : ing.quantity
+          ? ing.quantity + ' '
+          : '';
+
+      const unit = ing.unit ? ing.unit + ' ' : '';
+      const name = ing.name || '';
+
+      span.textContent = `${qty || ''}${unit || ''}${name}`;
+      line.appendChild(span);
+      ingredientsSection.appendChild(line);
+    });
   }
 
   // ✅ Render steps (instructions)
