@@ -164,6 +164,11 @@ if (editorActionBtn) {
     try {
       const binaryArray = window.dbInstance.export();
 
+      // 🪄 Force persistence across reloads (temporary safeguard)
+      localStorage.setItem(
+        'favoriteEatsDb',
+        JSON.stringify(Array.from(binaryArray))
+      );
       const isElectron = !!window.electronAPI;
       if (isElectron) {
         const overwriteOnly = true; // 🔧 set true to skip backup
@@ -175,6 +180,12 @@ if (editorActionBtn) {
         } else {
           alert('Save failed — check console for details.');
         }
+
+        // 🧱 Force the in-memory DB bytes to disk as well
+        const persisted = await window.electronAPI.saveDB(binaryArray, {
+          overwriteOnly: false,
+        });
+        console.log('🧱 Disk persisted:', persisted);
       } else {
         // Browser fallback (download)
         const blob = new Blob([binaryArray], {

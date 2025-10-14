@@ -157,13 +157,24 @@ if (saveBtn) {
     try {
       const savedRecipe = await saveRecipeToDB();
       console.log('✅ Changes saved to DB');
+      //
+      //
+      //
 
       if (savedRecipe) {
-        // 🧠 Update in-memory snapshot so Cancel restores the *latest* order
-        window.recipeData = JSON.parse(JSON.stringify(savedRecipe));
+        console.log('🔄 Reloading full recipe from DB after save...');
+        const refreshed = bridge.loadRecipeFromDB(
+          window.dbInstance,
+          window.recipeId
+        );
+        window.recipeData = JSON.parse(JSON.stringify(refreshed));
         renderRecipe(window.recipeData);
-        console.log('🧠 Snapshot updated after save');
+        console.log('🧠 Snapshot updated with full reload');
       }
+
+      //
+      //
+      //
 
       isDirty = false;
       cancelBtn.disabled = true;
@@ -175,94 +186,25 @@ if (saveBtn) {
   });
 }
 
-// --- Durable database update ---
 async function saveRecipeToDB() {
-  const steps = Array.from(
-    document.querySelectorAll('.instruction-line.numbered .step-text')
-  );
-
-  // Ensure the database reference exists
   const db = window.dbInstance;
-  if (!db)
-    throw new Error('Database not initialized (window.dbInstance missing)');
+  const recipe = window.recipeData;
 
-  steps.forEach((stepTextEl, index) => {
-    //
-    //
-    //
-    //
+  // 1️⃣ Write edits to SQL.js memory
+  window.bridge.saveRecipeToDB(db, recipe);
 
-    const newOrder = index + 1;
-    const newText = stepTextEl.textContent.trim();
-    const stepId = stepTextEl.dataset.stepId;
-    if (!stepId) return;
+  // 2️⃣ Export the updated binary
+  const binaryArray = db.export();
 
-    // 🧠 Write changes directly into SQL.js memory
-    db.run(
-      `UPDATE recipe_steps
-         SET step_number = ?, instructions = ?
-       WHERE ID = ?;`,
-      [newOrder, newText, stepId]
-    );
-  });
-
-  console.log('✅ Changes saved to DB (memory)');
-
-  //
-  //
-
-  // ✅ Rebuild a full structured recipe object for renderRecipe()
-  const recipeId = window.recipeId;
-
-  // Pull base info
-  const recipeRes = db.exec(`
-    SELECT ID, title, servings_default, servings_min, servings_max
-    FROM recipes WHERE ID = ${recipeId};
-  `);
-  const row = recipeRes.length ? recipeRes[0].values[0] : null;
-  if (!row) return null;
-
-  const recipe = {
-    ID: row[0],
-    title: row[1],
-    servingsDefault: row[2],
-    servingsMin: row[3],
-    servingsMax: row[4],
-    sections: [],
-  };
-
-  // Pull all steps for this recipe
-  const stepRows = db.exec(`
-    SELECT ID, section_id, step_number, instructions
-    FROM recipe_steps
-    WHERE recipe_id = ${recipeId}
-    ORDER BY step_number;
-  `);
-
-  if (stepRows.length) {
-    const steps = stepRows[0].values.map(
-      ([ID, section_id, step_number, instructions]) => ({
-        ID,
-        section_id,
-        step_number,
-        instructions,
-      })
-    );
-    recipe.sections.push({ name: '(unnamed)', steps });
+  // 3️⃣ Write it to disk (Electron)
+  if (window.electronAPI) {
+    const overwriteOnly = true;
+    const ok = await window.electronAPI.saveDB(binaryArray, { overwriteOnly });
+    console.log(ok ? '💾 DB file written successfully' : '⚠️ DB write failed');
   }
 
-  // 🧾 Proof log — confirm structure before returning
-  console.log(
-    `🧾 saved recipe: ${recipe.title} — ${
-      recipe.sections[0]?.steps?.length || 0
-    } steps`
-  );
-
-  return recipe;
-  //
-  //
-  //
-  //
+  // 4️⃣ Reload the recipe from disk for verification
+  return window.bridge.loadRecipeFromDB(db, window.recipeId);
 }
 
 //
