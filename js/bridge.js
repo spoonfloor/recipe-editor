@@ -67,7 +67,8 @@ function loadRecipeFromDB(db, recipeId) {
         ]) => ({
           rimId,
           section_id,
-          quantity: parseFloat(qty) || qty,
+          quantity: isNaN(parseFloat(qty)) ? qty : parseFloat(qty),
+
           unit: unit || '',
           name,
           variant: variant || '',

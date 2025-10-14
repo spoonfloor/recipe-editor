@@ -87,7 +87,8 @@ function formatRecipe(db, recipeId) {
           : null;
 
         return {
-          quantity: parseFloat(qty) || qty,
+          quantity: isNaN(parseFloat(qty)) ? qty : parseFloat(qty),
+
           unit: unit || '',
           name,
           variant: variant || '',
