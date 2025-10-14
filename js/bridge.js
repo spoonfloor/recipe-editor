@@ -3,9 +3,7 @@
 
 window.bridge = { loadRecipeFromDB, saveRecipeToDB };
 
-/**
- * Load a recipe and all its pieces from the database into a full JS object.
- */
+// Load a recipe and all its pieces from the database into a full JS object.
 function loadRecipeFromDB(db, recipeId) {
   const recipeRows = db.exec(`
     SELECT ID, title, servings_default, servings_min, servings_max
@@ -15,7 +13,6 @@ function loadRecipeFromDB(db, recipeId) {
 
   const [id, title, servingsDefault, servingsMin, servingsMax] =
     recipeRows[0].values[0];
-
   // --- Load sections
   const sectionsQ = db.exec(`
     SELECT ID, name
@@ -27,85 +24,92 @@ function loadRecipeFromDB(db, recipeId) {
     ? sectionsQ[0].values.map(([ID, name]) => ({ ID, name }))
     : [];
 
-  //
-  //
-  //
+  // --- Load steps
+  const stepsQ = db.exec(`
+    SELECT ID, section_id, step_number, instructions
+    FROM recipe_steps
+    WHERE recipe_id = ${id}
+    ORDER BY step_number;
+  `);
+  const steps = stepsQ.length
+    ? stepsQ[0].values.map(([ID, section_id, step_number, instructions]) => ({
+        ID,
+        section_id,
+        step_number,
+        instructions,
+      }))
+    : [];
 
-  // --- Load steps, assigning them to sections when possible
-  const allStepsQ = db.exec(`
-  SELECT ID, section_id, step_number, instructions
-  FROM recipe_steps
-  WHERE recipe_id = ${id}
-  ORDER BY step_number;
-`);
-  const allSteps = allStepsQ.length
-    ? allStepsQ[0].values.map(
-        ([ID, section_id, step_number, instructions]) => ({
-          ID,
+  // --- Load ingredients (borrowed from formatter)
+  const ingredientsQ = db.exec(`
+    SELECT rim.ID, rim.section_id, rim.quantity, rim.unit,
+           i.name, i.variant, rim.prep_notes,
+           rim.is_optional, i.parenthetical_note, i.location_at_home
+    FROM recipe_ingredient_map rim
+    JOIN ingredients i ON rim.ingredient_id = i.ID
+    WHERE rim.recipe_id = ${id}
+    ORDER BY rim.ID;
+  `);
+
+  const ingredients = ingredientsQ.length
+    ? ingredientsQ[0].values.map(
+        ([
+          rimId,
           section_id,
-          step_number,
-          instructions,
+          qty,
+          unit,
+          name,
+          variant,
+          prepNotes,
+          isOptional,
+          parentheticalNote,
+          locationAtHome,
+        ]) => ({
+          rimId,
+          section_id,
+          quantity: parseFloat(qty) || qty,
+          unit: unit || '',
+          name,
+          variant: variant || '',
+          prepNotes: prepNotes || '',
+          isOptional: !!isOptional,
+          parentheticalNote: parentheticalNote || '',
+          locationAtHome: locationAtHome ? locationAtHome.toLowerCase() : '',
         })
       )
     : [];
 
-  // Group by section_id (including null)
-  const sectionMap = new Map(sections.map((s) => [s.ID, { ...s, steps: [] }]));
-  const unsectioned = [];
+  // --- Group steps + ingredients by section
+  const sectionMap = new Map(
+    sections.map((s) => [s.ID, { ...s, steps: [], ingredients: [] }])
+  );
+  const unsectioned = { steps: [], ingredients: [] };
 
-  for (const step of allSteps) {
+  for (const step of steps) {
     const target = sectionMap.get(step.section_id);
-    if (target) target.steps.push(step);
-    else unsectioned.push(step);
+    (target ? target.steps : unsectioned.steps).push(step);
   }
 
-  const sectionsWithSteps = [...sectionMap.values()];
-
-  // Add fallback section for any unsectioned steps
-  if (unsectioned.length) {
-    sectionsWithSteps.unshift({ name: '(unnamed)', steps: unsectioned });
+  for (const ing of ingredients) {
+    const target = sectionMap.get(ing.section_id);
+    (target ? target.ingredients : unsectioned.ingredients).push(ing);
   }
 
-  //
-  //
-  //
-
-  // --- Fallback for recipes without sections
-  if (sectionsWithSteps.length === 0) {
-    const stepsQ = db.exec(`
-      SELECT ID, step_number, instructions
-      FROM recipe_steps
-      WHERE recipe_id = ${id}
-      ORDER BY step_number;
-    `);
-    const steps = stepsQ.length
-      ? stepsQ[0].values.map(([ID, step_number, instructions]) => ({
-          ID,
-          step_number,
-          instructions,
-        }))
-      : [];
-    sectionsWithSteps.push({ name: '(unnamed)', steps });
+  const sectionsWithContent = [...sectionMap.values()];
+  if (unsectioned.steps.length || unsectioned.ingredients.length) {
+    sectionsWithContent.unshift({ name: '(unnamed)', ...unsectioned });
   }
 
   const recipe = {
     id,
     title,
     servings: { default: servingsDefault, min: servingsMin, max: servingsMax },
-    sections: sectionsWithSteps,
+    sections: sectionsWithContent,
   };
 
-  console.log(`🧩 bridge.loadRecipeFromDB →`, recipe);
+  console.log(`🧩 bridge.loadRecipeFromDB (enhanced) →`, recipe);
   return recipe;
 }
-
-/**
- * Persist the in-memory recipe object back into SQL.js.
- */
-
-//
-//
-//
 
 function saveRecipeToDB(db, recipe) {
   const activeDb = db || window.dbInstance;

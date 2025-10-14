@@ -185,12 +185,15 @@ if (saveBtn) {
 
       if (savedRecipe) {
         console.log(
-          '🔄 Reloading full recipe (with ingredients) after save...'
+          '🔄 Reloading full recipe from DB after save (via bridge)...'
         );
-        const refreshed = formatRecipe(window.dbInstance, window.recipeId);
+        const refreshed = bridge.loadRecipeFromDB(
+          window.dbInstance,
+          window.recipeId
+        );
         window.recipeData = JSON.parse(JSON.stringify(refreshed));
         renderRecipe(window.recipeData);
-        console.log('🧠 Snapshot updated with ingredients intact');
+        console.log('🧠 Snapshot updated with full reload via bridge');
       }
 
       //
