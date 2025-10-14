@@ -157,6 +157,28 @@ if (saveBtn) {
     try {
       const savedRecipe = await saveRecipeToDB();
       console.log('✅ Changes saved to DB');
+
+      // ✨ Persist SQL.js memory to disk (Electron or browser fallback)
+      const binaryArray = window.dbInstance.export();
+      const isElectron = !!window.electronAPI;
+      if (isElectron) {
+        const ok = await window.electronAPI.saveDB(binaryArray, {
+          overwriteOnly: true,
+        });
+        if (ok) alert('Database saved successfully.');
+        else alert('Save failed — check console for details.');
+      } else {
+        const blob = new Blob([binaryArray], {
+          type: 'application/octet-stream',
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'favorite_eats_updated.sqlite';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
       //
       //
       //
@@ -187,24 +209,14 @@ if (saveBtn) {
 }
 
 async function saveRecipeToDB() {
+  // Delegate to the bridge, which now owns all DB write logic
   const db = window.dbInstance;
   const recipe = window.recipeData;
 
-  // 1️⃣ Write edits to SQL.js memory
-  window.bridge.saveRecipeToDB(db, recipe);
+  bridge.saveRecipeToDB(db, recipe);
 
-  // 2️⃣ Export the updated binary
-  const binaryArray = db.export();
-
-  // 3️⃣ Write it to disk (Electron)
-  if (window.electronAPI) {
-    const overwriteOnly = true;
-    const ok = await window.electronAPI.saveDB(binaryArray, { overwriteOnly });
-    console.log(ok ? '💾 DB file written successfully' : '⚠️ DB write failed');
-  }
-
-  // 4️⃣ Reload the recipe from disk for verification
-  return window.bridge.loadRecipeFromDB(db, window.recipeId);
+  // Re-read from DB to return a fully refreshed object
+  return bridge.loadRecipeFromDB(db, window.recipeId);
 }
 
 //
