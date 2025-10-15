@@ -308,6 +308,75 @@ function setupStepReordering(container, db, recipeId) {
   });
 }
 
+// --- You Will Need helpers (restored) ---
+function formatNeedLine(ing) {
+  let qtyText = '';
+  if (typeof ing.quantity === 'number' && !isNaN(ing.quantity)) {
+    qtyText = decimalToFractionDisplay(ing.quantity);
+  } else if (typeof ing.quantity === 'string' && ing.quantity.trim()) {
+    qtyText = ing.quantity;
+  }
+
+  const unitText = ing.unit || '';
+  const qtyUnit = [qtyText, unitText].filter(Boolean).join(' ');
+
+  let text = `${ing.variant ? ing.variant + ' ' : ''}${ing.name}`;
+  if (qtyUnit) text += ` (${qtyUnit})`;
+
+  // merge optional into same parentheses
+  if (ing.isOptional) {
+    if (qtyUnit) text = text.replace(/\)$/, ', optional)');
+    else text += ' (optional)';
+  }
+
+  return text.trim();
+}
+
+function sortIngredients(list, locationOrder = INGREDIENTS_LOCATION_ORDER) {
+  return [...list].sort((a, b) => {
+    const aLoc = a.locationAtHome || '';
+    const bLoc = b.locationAtHome || '';
+    const locIndexA = locationOrder.indexOf(aLoc);
+    const locIndexB = locationOrder.indexOf(bLoc);
+    if (locIndexA !== locIndexB) return locIndexA - locIndexB;
+
+    if (a.isOptional !== b.isOptional) return a.isOptional ? 1 : -1;
+
+    const nameA = a.name.toLowerCase();
+    const nameB = b.name.toLowerCase();
+    if (nameA !== nameB) return nameA.localeCompare(nameB);
+
+    const varA = a.variant ? a.variant.toLowerCase() : '';
+    const varB = b.variant ? b.variant.toLowerCase() : '';
+    return varA.localeCompare(varB);
+  });
+}
+
+function mergeByIngredient(list) {
+  const merged = [];
+  const map = new Map();
+
+  list.forEach((ing) => {
+    const key = `${ing.variant || ''}|${ing.name}|${ing.locationAtHome || ''}`;
+    if (!map.has(key)) {
+      map.set(key, { ...ing });
+    } else {
+      const existing = map.get(key);
+      if (
+        typeof existing.quantity === 'number' &&
+        typeof ing.quantity === 'number' &&
+        existing.unit === ing.unit
+      ) {
+        existing.quantity += ing.quantity;
+      }
+      existing.isOptional = existing.isOptional || ing.isOptional;
+    }
+  });
+
+  map.forEach((v) => merged.push(v));
+  return merged;
+}
+
 // --- Main render function (bridge edition: safe, data-driven, backward compatible) ---
 function renderRecipe(recipe) {
   console.log('🧩 renderRecipe called with:', recipe);
@@ -350,6 +419,10 @@ function renderRecipe(recipe) {
     </div>
   `;
 
+  // ✅ Define these right away so inserts can safely reference them
+  const ingredientsSection = container.querySelector('#ingredientsSection');
+  const stepsSection = container.querySelector('#stepsSection');
+
   // ✅ Optional: render servings info
   if (recipe.servingsDefault) {
     const servingsLine = document.createElement('div');
@@ -390,8 +463,70 @@ function renderRecipe(recipe) {
     });
   }
 
+  // --- You will need section (restored) ---
+  const allIngredients = recipe.sections.flatMap((s) => s.ingredients || []);
+  if (allIngredients.length > 0) {
+    const needWrapper = document.createElement('div');
+    needWrapper.className = 'you-will-need-card';
+    container.insertBefore(needWrapper, stepsSection); // appears between ingredients and instructions
+    const needHeader = document.createElement('h2');
+    needHeader.className = 'section-header';
+    needHeader.textContent = 'You will need';
+    needWrapper.appendChild(needHeader);
+
+    // Group by location
+    const grouped = {};
+    allIngredients.forEach((ing) => {
+      const loc = ing.locationAtHome || '';
+      if (!grouped[loc]) grouped[loc] = [];
+      grouped[loc].push(ing);
+    });
+
+    // Merge duplicates
+    Object.keys(grouped).forEach((loc) => {
+      grouped[loc] = mergeByIngredient(grouped[loc]);
+    });
+
+    // Render by NEED_LOCATION_ORDER
+    NEED_LOCATION_ORDER.forEach((loc) => {
+      const items = grouped[loc];
+      if (!items || !items.length) return;
+
+      const subHeader = document.createElement('div');
+      subHeader.className = 'subsection-header';
+      subHeader.textContent = loc ? capitalizeWords(loc) : 'Misc';
+      needWrapper.appendChild(subHeader);
+
+      sortIngredients(items, NEED_LOCATION_ORDER).forEach((ing) => {
+        const line = document.createElement('div');
+        line.className = 'ingredient-line';
+        const span = document.createElement('span');
+        span.textContent = formatNeedLine(ing);
+        line.appendChild(span);
+        needWrapper.appendChild(line);
+      });
+    });
+
+    // --- Measures section ---
+    const measures = computeMeasures(allIngredients);
+    if (measures.length > 0) {
+      const measureHeader = document.createElement('div');
+      measureHeader.className = 'subsection-header';
+      measureHeader.textContent = 'Measures';
+      needWrapper.appendChild(measureHeader);
+
+      measures.forEach((m) => {
+        const line = document.createElement('div');
+        line.className = 'ingredient-line';
+        const span = document.createElement('span');
+        span.textContent = m;
+        line.appendChild(span);
+        needWrapper.appendChild(line);
+      });
+    }
+  }
+
   // ✅ Render steps (instructions)
-  const stepsSection = container.querySelector('#stepsSection');
   if (recipe.steps && recipe.steps.length > 0) {
     recipe.steps.forEach((step, i) => {
       const line = document.createElement('div');
