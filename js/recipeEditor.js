@@ -99,29 +99,38 @@ const cancelBtn = document.getElementById('cancelEditsBtn');
 cancelBtn.disabled = true; // ✅ start disabled
 
 function markDirty() {
-  if (!isDirty) {
-    isDirty = true;
+  // - Keystone Phase 1c: unified dirty-state tracking
+  if (!editorContext.isDirty) {
+    editorContext.isDirty = true;
     cancelBtn.disabled = false;
     enableSave();
+    console.log('✏️ editorContext marked dirty');
   }
 }
 
 function revertChanges() {
-  // ✅ Prefer fresh nested sections for restore (supports refactored structure)
-  const restoreSource = window.recipeData?.sections
-    ? JSON.parse(JSON.stringify(window.recipeData))
-    : window.recipeData;
+  // - Keystone Phase 1c: unified revert & context reset
+  const { recipeData } = editorContext;
+  if (!recipeData) {
+    console.warn('⚠️ revertChanges: no recipeData available');
+    return;
+  }
+
+  const restoreSource = recipeData.sections
+    ? JSON.parse(JSON.stringify(recipeData))
+    : recipeData;
 
   renderRecipe(restoreSource);
 
   // Clean up selection and UI state
   if (window.getSelection) window.getSelection().removeAllRanges();
   clearSelectedStep();
-  isDirty = false;
+
+  editorContext.isDirty = false;
   cancelBtn.disabled = true;
   disableSave();
+  console.log('↩️ editorContext reverted to last saved state');
 }
-
 cancelBtn.addEventListener('click', () => {
   if (isDirty) {
     revertChanges();
@@ -211,14 +220,37 @@ if (saveBtn) {
 }
 
 async function saveRecipeToDB() {
-  // Delegate to the bridge, which now owns all DB write logic
-  const db = window.dbInstance;
-  const recipe = window.recipeData;
+  // Always pull from central editorContext
+  const { db, recipeId, recipeData } = editorContext;
+  if (!db) throw new Error('No active database in editorContext');
+  if (!recipeData) throw new Error('No recipeData loaded for save');
 
-  bridge.saveRecipeToDB(db, recipe);
+  // Delegate to bridge for all DB writes
+  bridge.saveRecipeToDB(db, recipeData);
 
-  // Re-read from DB to return a fully refreshed object
-  return bridge.loadRecipeFromDB(db, window.recipeId);
+  // Export & persist via Electron or browser fallback
+  const binaryArray = db.export();
+  const isElectron = !!window.electronAPI;
+  if (isElectron) {
+    const ok = await window.electronAPI.saveDB(binaryArray, {
+      overwriteOnly: true,
+    });
+    if (!ok) throw new Error('Electron saveDB returned false');
+  } else {
+    // Browser fallback: prompt download
+    const blob = new Blob([binaryArray], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'favorite_eats_updated.sqlite';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Re-read from DB to refresh in-memory data
+  const refreshed = bridge.loadRecipeFromDB(db, recipeId);
+  editorContext.recipeData = JSON.parse(JSON.stringify(refreshed));
+  return refreshed;
 }
 
 //
@@ -382,7 +414,7 @@ function renderRecipe(recipe) {
   console.log('🧩 renderRecipe called with:', recipe);
 
   // Keep a deep copy for cancel/revert
-  window.recipeData = JSON.parse(JSON.stringify(recipe));
+  editorContext.recipeData = JSON.parse(JSON.stringify(recipe));
 
   // --- Bridge normalization: make sure we have a usable recipe.steps array
   if (!recipe.steps && Array.isArray(recipe.sections)) {

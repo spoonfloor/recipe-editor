@@ -14,6 +14,14 @@ initSqlJs({
   }
 });
 
+// Central unified app state accessible across renderer scripts
+window.editorContext = {
+  db: null, // active SQL.js instance
+  recipeId: null, // current recipe ID
+  recipeData: null, // in-memory normalized recipe
+  isDirty: false, // track unsaved edits
+};
+
 // Welcome page logic
 const loadDbBtn = document.getElementById('loadDbBtn');
 const dbLoader = document.getElementById('dbLoader');
@@ -162,7 +170,7 @@ if (editorActionBtn) {
     if (editorActionBtn.disabled) return; // ignore if inactive
 
     try {
-      const binaryArray = window.dbInstance.export();
+      const binaryArray = editorContext.db.export();
 
       // 🪄 Force persistence across reloads (temporary safeguard)
       localStorage.setItem(
@@ -229,8 +237,8 @@ function loadRecipeEditorPage() {
   // Restore database
   const Uints = new Uint8Array(JSON.parse(stored));
   const db = new SQL.Database(Uints);
-  window.dbInstance = db;
-  window.recipeId = recipeId;
+  editorContext.db = db;
+  editorContext.recipeId = recipeId;
 
   // Fetch and render the recipe
   const recipe = formatRecipe(db, recipeId);
