@@ -223,14 +223,22 @@ async function saveRecipeToDB() {
   return bridge.loadRecipeFromDB(db, window.recipeId);
 }
 
-//
-//
-//
-//
+// --- Keyboard Step Reordering System (single global key handler) ---
+const stepReorderCtx = {
+  container: null,
+  activeStep: null,
+  db: null,
+  recipeId: null,
+  renumber: null,
+  handlerInstalled: false,
+};
 
-// --- Keyboard Step Reordering System (with live renumbering) ---
 function setupStepReordering(container, db, recipeId) {
-  let activeStep = null;
+  // keep latest refs
+  stepReorderCtx.container = container;
+  stepReorderCtx.db = db;
+  stepReorderCtx.recipeId =
+    recipeId || window.recipeId || window.recipeData?.id || null;
 
   // click to select
   container.addEventListener('click', (e) => {
@@ -242,72 +250,77 @@ function setupStepReordering(container, db, recipeId) {
       .forEach((el) => el.classList.remove('selected'));
 
     line.classList.add('selected');
-    activeStep = line;
+    stepReorderCtx.activeStep = line;
   });
 
   // helper: update visible numbers after reorder
   function renumberSteps() {
-    const allSteps = container.querySelectorAll('.instruction-line.numbered');
-    allSteps.forEach((line, idx) => {
+    const all =
+      stepReorderCtx.container?.querySelectorAll(
+        '.instruction-line.numbered'
+      ) || [];
+    all.forEach((line, idx) => {
       const num = line.querySelector('.step-num');
       if (num) num.textContent = `${idx + 1}.`;
     });
   }
+  stepReorderCtx.renumber = renumberSteps;
 
-  // keyboard handler
-  document.addEventListener('keydown', (e) => {
-    if (!activeStep) return;
-    const meta = e.metaKey || e.ctrlKey;
-    if (!meta) return;
+  // single global key handler
+  if (!stepReorderCtx.handlerInstalled) {
+    document.addEventListener('keydown', (e) => {
+      const ctx = stepReorderCtx;
+      const activeStep = ctx.activeStep;
+      const containerRef = ctx.container;
+      if (!activeStep || !containerRef) return;
 
-    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-      e.preventDefault();
-      const moveUp = e.key === 'ArrowUp';
-      const sibling = moveUp
-        ? activeStep.previousElementSibling
-        : activeStep.nextElementSibling;
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
 
-      if (sibling && sibling.classList.contains('instruction-line')) {
-        if (moveUp) container.insertBefore(activeStep, sibling);
-        else container.insertBefore(sibling, activeStep);
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        const moveUp = e.key === 'ArrowUp';
+        const sibling = moveUp
+          ? activeStep.previousElementSibling
+          : activeStep.nextElementSibling;
 
-        // 🔹 immediately update numbers
-        renumberSteps();
+        if (sibling && sibling.classList.contains('instruction-line')) {
+          if (moveUp) containerRef.insertBefore(activeStep, sibling);
+          else containerRef.insertBefore(sibling, activeStep);
 
-        // 🔹 Update in-memory database ordering (safe fallback)
-        if (db && (recipeId || window.recipeData?.id)) {
-          const realRecipeId = recipeId || window.recipeData.id;
-          const allSteps = Array.from(
-            container.querySelectorAll('.instruction-line.numbered .step-text')
-          );
+          // update numbers
+          ctx.renumber && ctx.renumber();
 
-          allSteps.forEach((stepTextEl, index) => {
-            const newOrder = index + 1;
-            const newText = stepTextEl.textContent;
-            const stepId = stepTextEl.dataset.stepId;
-
-            if (!stepId) {
-              console.warn(
-                '⚠️ Skipping update — missing stepId for:',
-                stepTextEl
-              );
-              return;
-            }
-
-            db.run(
-              `UPDATE recipe_steps 
-                 SET step_number = ?, instructions = ? 
-                 WHERE recipe_id = ? AND ID = ?;`,
-              [newOrder, newText, realRecipeId, stepId]
+          // update in-memory DB ordering (safe fallback)
+          const dbRef = ctx.db;
+          const rid = ctx.recipeId || window.recipeData?.id;
+          if (dbRef && rid) {
+            const allSteps = Array.from(
+              containerRef.querySelectorAll(
+                '.instruction-line.numbered .step-text'
+              )
             );
-          });
-        }
+            allSteps.forEach((stepTextEl, index) => {
+              const newOrder = index + 1;
+              const newText = stepTextEl.textContent;
+              const stepId = stepTextEl.dataset.stepId;
+              if (!stepId) return;
+              dbRef.run(
+                `UPDATE recipe_steps 
+                   SET step_number = ?, instructions = ? 
+                   WHERE recipe_id = ? AND ID = ?;`,
+                [newOrder, newText, rid, stepId]
+              );
+            });
+          }
 
-        // ✅ Always flag dirty state, even if no DB write occurred
-        markDirty();
+          // mark dirty
+          if (typeof markDirty === 'function') markDirty();
+        }
       }
-    }
-  });
+    });
+    stepReorderCtx.handlerInstalled = true;
+  }
 }
 
 // --- You Will Need helpers (restored) ---
