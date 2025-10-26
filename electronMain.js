@@ -12,11 +12,68 @@ const path = require('path');
 // Default DB path (used if user never picked a file)
 let ACTIVE_DB_PATH =
   '/Volumes/primary/eric_files/websites/favorite_eats/database/favorite_eats.db';
-// const HISTORY_DIR = path.join(path.dirname(NAS_DB_PATH), 'history'); // backup folder next to it
 
-const HISTORY_DIR = path.join(path.dirname(ACTIVE_DB_PATH), 'history');
+const MAX_BACKUPS = 8;
 
-const MAX_BACKUPS = 5; // easy-to-find constant
+// --- Backup helpers ---
+
+function tsStamp(d = new Date()) {
+  // local time: "YYYYMMDD-HHMMSS"
+  const pad = (n) => String(n).padStart(2, '0');
+  const YYYY = d.getFullYear();
+  const MM = pad(d.getMonth() + 1);
+  const DD = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  return `${YYYY}${MM}${DD}-${hh}${mm}${ss}`;
+}
+
+function reserveBackupPath(historyDir, base, ext) {
+  const stamp = tsStamp();
+  for (let n = 0; n < 100; n++) {
+    const suffix = n === 0 ? '' : `-${String(n).padStart(2, '0')}`;
+    const candidate = path.join(historyDir, `${base}_${stamp}${suffix}${ext}`);
+    try {
+      const fd = fs.openSync(candidate, 'wx'); // atomic reserve
+      fs.closeSync(fd);
+      return candidate;
+    } catch (e) {
+      if (e.code === 'EEXIST') continue;
+      throw e;
+    }
+  }
+  throw new Error('Too many backups in the same second.');
+}
+function pruneBackups(historyDir, keepCount = MAX_BACKUPS) {
+  try {
+    if (!fs.existsSync(historyDir)) return;
+    const files = fs
+      .readdirSync(historyDir)
+      .map((name) => ({ name, full: path.join(historyDir, name) }))
+      .filter((f) => {
+        try {
+          return fs.statSync(f.full).isFile();
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => {
+        try {
+          return fs.statSync(b.full).mtimeMs - fs.statSync(a.full).mtimeMs;
+        } catch {
+          return 0;
+        }
+      });
+    files.slice(keepCount).forEach((f) => {
+      try {
+        fs.unlinkSync(f.full);
+      } catch {}
+    });
+  } catch (e) {
+    console.warn('⚠️ pruneBackups failed:', e);
+  }
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -47,16 +104,37 @@ ipcMain.handle(
       const targetPath = ACTIVE_DB_PATH;
       fs.mkdirSync(path.dirname(targetPath), { recursive: true });
 
+      // Guard: prevent edits to backups (no recursive Backup folders)
+      const isInBackupFolder = /(^|[\\/])Backup([\\/]|$)/i.test(
+        path.normalize(targetPath)
+      );
+      if (isInBackupFolder) {
+        dialog.showErrorBox(
+          'Read-only Backup',
+          'This file is a read-only backup. Move it out of the Backup folder to edit.'
+        );
+        return false;
+      }
+
       // Optional backup step
       if (!options.overwriteOnly) {
-        fs.mkdirSync(HISTORY_DIR, { recursive: true });
-        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-        const backupPath = path.join(HISTORY_DIR, `favorite_eats_${ts}.sqlite`);
-        fs.writeFileSync(backupPath, buffer);
+        const BACKUP_DIR = path.join(path.dirname(targetPath), 'Backup');
+        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        // Back up existing on-disk DB BEFORE overwrite
+        if (fs.existsSync(targetPath)) {
+          const base = path.basename(targetPath, path.extname(targetPath));
+          const ext = path.extname(targetPath) || '.db';
+          const backupPath = reserveBackupPath(BACKUP_DIR, base, ext);
+          fs.copyFileSync(targetPath, backupPath);
+        }
+        pruneBackups(BACKUP_DIR);
       }
 
       console.log('🧾 Writing DB to:', targetPath);
-      fs.writeFileSync(targetPath, buffer);
+      // Safer write: temp + rename
+      const tmp = `${targetPath}.tmp`;
+      fs.writeFileSync(tmp, buffer);
+      fs.renameSync(tmp, targetPath);
       return true;
     } catch (err) {
       console.error('❌ Save failed:', err);
@@ -82,7 +160,23 @@ ipcMain.handle('pickDB', async (event, lastPath = null) => {
 
   const result = await dialog.showOpenDialog(options);
   if (result.canceled) return null;
-  return result.filePaths[0];
+  const chosen = result.filePaths[0];
+  if (!chosen) return null;
+  const isInBackupFolder = /(^|[\\/])Backup([\\/]|$)/i.test(
+    path.normalize(chosen)
+  );
+  if (isInBackupFolder) {
+    await dialog.showMessageBox({
+      type: 'warning',
+      buttons: ['OK'],
+      title: 'Read-only Backup',
+      message:
+        'This file is a read-only backup. Move it out of the Backup folder to edit.',
+      detail:
+        'You can view it now, but saving changes will be blocked until it is moved.',
+    });
+  }
+  return chosen;
 });
 
 ipcMain.handle('getEnv', async () => ({

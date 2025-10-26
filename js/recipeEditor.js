@@ -163,8 +163,10 @@ if (saveBtn) {
       const isElectron = !!window.electronAPI;
       if (isElectron) {
         const ok = await window.electronAPI.saveDB(binaryArray, {
-          overwriteOnly: true,
+          // pre-overwrite backup + write
+          overwriteOnly: false,
         });
+
         if (ok) alert('Database saved successfully.');
         else alert('Save failed — check console for details.');
       } else {

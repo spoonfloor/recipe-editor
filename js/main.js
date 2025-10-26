@@ -151,65 +151,6 @@ function loadRecipesPage() {
   }
 }
 
-// Recipe editor page logic
-// --- Save button setup ---
-const editorActionBtn = document.getElementById('editorActionBtn');
-if (editorActionBtn) {
-  // start dimmed
-  editorActionBtn.disabled = true;
-
-  editorActionBtn.addEventListener('click', async () => {
-    if (editorActionBtn.disabled) return; // ignore if inactive
-
-    try {
-      const binaryArray = window.dbInstance.export();
-
-      // 🪄 Force persistence across reloads (temporary safeguard)
-      localStorage.setItem(
-        'favoriteEatsDb',
-        JSON.stringify(Array.from(binaryArray))
-      );
-      const isElectron = !!window.electronAPI;
-      if (isElectron) {
-        const overwriteOnly = true; // 🔧 set true to skip backup
-        const ok = await window.electronAPI.saveDB(binaryArray, {
-          overwriteOnly,
-        });
-        if (ok) {
-          alert('Database saved successfully.');
-        } else {
-          alert('Save failed — check console for details.');
-        }
-
-        // 🧱 Force the in-memory DB bytes to disk as well
-        const persisted = await window.electronAPI.saveDB(binaryArray, {
-          overwriteOnly: false,
-        });
-        console.log('🧱 Disk persisted:', persisted);
-      } else {
-        // Browser fallback (download)
-        const blob = new Blob([binaryArray], {
-          type: 'application/octet-stream',
-        });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'favorite_eats_updated.sqlite';
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-
-      // ✅ Use central revert logic to reset both Save + Cancel
-      if (typeof revertChanges === 'function') {
-        revertChanges();
-      }
-    } catch (err) {
-      console.error('❌ Failed to save DB:', err);
-      alert('Error saving database — check console for details.');
-    }
-  });
-}
-
 // --- Recipe editor loader ---
 function loadRecipeEditorPage() {
   const stored = localStorage.getItem('favoriteEatsDb');
