@@ -115,24 +115,84 @@ function loadRecipeFromDB(db, recipeId) {
 function saveRecipeToDB(db, recipe) {
   const activeDb = db || window.dbInstance;
   if (!activeDb) throw new Error('No active database found');
+  const rid = recipe.id || window.recipeId;
+  if (!rid) throw new Error('No recipe id');
 
-  const stepNodes = document.querySelectorAll(
-    '.instruction-line.numbered .step-text'
-  );
-  stepNodes.forEach((stepTextEl, index) => {
-    const newOrder = index + 1;
-    const newText = stepTextEl.textContent.trim();
-    const stepId = stepTextEl.dataset.stepId;
-    if (!stepId) return;
-    activeDb.run(
-      `UPDATE recipe_steps
-         SET step_number = ?, instructions = ?
-       WHERE ID = ?;`,
-      [newOrder, newText, stepId]
+  // 1) Gather model steps by section (source of truth for text/section)
+  const sections = Array.isArray(recipe.sections) ? recipe.sections : [];
+  const byId = new Map(); // stepId -> {section_id, instructions, ID}
+  const bySection = new Map(); // section_id|null -> [{ID, instructions}]
+  sections.forEach((sec) => {
+    const sid = sec.ID ?? sec.id ?? null;
+    (sec.steps || []).forEach((s) => {
+      const stepId = s.ID ?? s.id ?? null;
+      if (stepId != null) {
+        byId.set(String(stepId), {
+          ID: stepId,
+          section_id: s.section_id ?? sid,
+          instructions: s.instructions,
+        });
+      }
+    });
+    bySection.set(
+      sid,
+      (sec.steps || []).map((s) => ({
+        ID: s.ID ?? s.id ?? null,
+        section_id: s.section_id ?? sid,
+        instructions: s.instructions,
+      }))
     );
   });
 
-  console.log(
-    `💾 bridge.saveRecipeToDB → updated ${stepNodes.length} steps from DOM`
-  );
+  // 2) Read current DOM ordering for the visible instruction list (keeps current UX intact)
+  const domIds = Array.from(
+    document.querySelectorAll('.instruction-line.numbered .step-text')
+  )
+    .map((el) => el.dataset.stepId)
+    .filter(Boolean);
+
+  // 3) Rebuild per-section arrays, applying DOM order where applicable
+  const reorderedBySection = new Map();
+  bySection.forEach((list, sid) => {
+    const idsInThisSection = new Set(list.map((s) => String(s.ID)));
+    const domOrderForSection = domIds.filter((id) =>
+      idsInThisSection.has(String(id))
+    );
+    if (domOrderForSection.length > 0) {
+      const ordered = [];
+      domOrderForSection.forEach((id) => {
+        const rec = byId.get(String(id));
+        if (rec) ordered.push(rec);
+      });
+      // append any remaining (not in DOM list) in original order
+      list.forEach((s) => {
+        if (!domOrderForSection.includes(String(s.ID))) ordered.push(s);
+      });
+      reorderedBySection.set(sid, ordered);
+    } else {
+      reorderedBySection.set(sid, list);
+    }
+  });
+
+  // 4) Transaction: clear + reinsert in compact order (per section)
+  activeDb.run('BEGIN;');
+  try {
+    activeDb.run(`DELETE FROM recipe_steps WHERE recipe_id = ?;`, [rid]);
+    reorderedBySection.forEach((list, sid) => {
+      let n = 1;
+      list.forEach((s) => {
+        activeDb.run(
+          `INSERT INTO recipe_steps (ID, recipe_id, section_id, step_number, instructions)
+         VALUES (?, ?, ?, ?, ?);`,
+          [s.ID ?? null, rid, sid ?? null, n++, s.instructions ?? '']
+        );
+      });
+    });
+    activeDb.run('COMMIT;');
+    console.info('💾 bridge.saveRecipeToDB → steps saved (transactional)');
+  } catch (e) {
+    activeDb.run('ROLLBACK;');
+    console.error('❌ saveRecipeToDB failed', e);
+    throw e;
+  }
 }
