@@ -38,15 +38,11 @@ if (loadDbBtn && dbLoader) {
         // 3. Save for next session
         localStorage.setItem('favoriteEatsDbPath', dbPath);
 
-        // 4. Load and store DB bytes
-        const bytes = await window.electronAPI.loadDB(dbPath);
-        const Uints = new Uint8Array(bytes);
-        localStorage.setItem(
-          'favoriteEatsDb',
-          JSON.stringify(Array.from(Uints))
-        );
+        // 4. Touch load once (validates path & sets ACTIVE_DB_PATH in main)
+        await window.electronAPI.loadDB(dbPath);
 
         // 5. Navigate to recipes list
+
         window.location.href = 'recipes.html';
       } catch (err) {
         console.error('❌ Error loading database:', err);
@@ -72,15 +68,31 @@ if (loadDbBtn && dbLoader) {
 }
 
 // Recipes page logic
-function loadRecipesPage() {
-  const stored = localStorage.getItem('favoriteEatsDb');
-  if (!stored) {
-    alert('No database loaded. Please go back to the welcome page.');
-    return;
+async function loadRecipesPage() {
+  const isElectron = !!window.electronAPI;
+  let db;
+  if (isElectron) {
+    try {
+      // prefer stored path; fall back to ACTIVE_DB_PATH in main
+      const pathHint = localStorage.getItem('favoriteEatsDbPath') || null;
+      const bytes = await window.electronAPI.loadDB(pathHint);
+      const Uints = new Uint8Array(bytes);
+      db = new SQL.Database(Uints);
+    } catch (err) {
+      console.error('❌ Failed to load DB from disk:', err);
+      alert('No database loaded. Please go back to the welcome page.');
+      return;
+    }
+  } else {
+    // Browser fallback (keeps old behavior)
+    const stored = localStorage.getItem('favoriteEatsDb');
+    if (!stored) {
+      alert('No database loaded. Please go back to the welcome page.');
+      return;
+    }
+    const Uints = new Uint8Array(JSON.parse(stored));
+    db = new SQL.Database(Uints);
   }
-
-  const Uints = new Uint8Array(JSON.parse(stored));
-  const db = new SQL.Database(Uints);
 
   // --- Load recipes ---
   const recipes = db.exec(
@@ -152,12 +164,30 @@ function loadRecipesPage() {
 }
 
 // --- Recipe editor loader ---
-function loadRecipeEditorPage() {
-  const stored = localStorage.getItem('favoriteEatsDb');
-  if (!stored) {
-    alert('No database loaded. Please go back to the welcome page.');
-    window.location.href = 'index.html';
-    return;
+async function loadRecipeEditorPage() {
+  const isElectron = !!window.electronAPI;
+  let db;
+  if (isElectron) {
+    try {
+      const pathHint = localStorage.getItem('favoriteEatsDbPath') || null;
+      const bytes = await window.electronAPI.loadDB(pathHint);
+      const Uints = new Uint8Array(bytes);
+      db = new SQL.Database(Uints);
+    } catch (err) {
+      console.error('❌ Failed to load DB from disk:', err);
+      alert('No database loaded. Please go back to the welcome page.');
+      window.location.href = 'index.html';
+      return;
+    }
+  } else {
+    const stored = localStorage.getItem('favoriteEatsDb');
+    if (!stored) {
+      alert('No database loaded. Please go back to the welcome page.');
+      window.location.href = 'index.html';
+      return;
+    }
+    const Uints = new Uint8Array(JSON.parse(stored));
+    db = new SQL.Database(Uints);
   }
 
   const recipeId = sessionStorage.getItem('selectedRecipeId');
@@ -167,9 +197,6 @@ function loadRecipeEditorPage() {
     return;
   }
 
-  // Restore database
-  const Uints = new Uint8Array(JSON.parse(stored));
-  const db = new SQL.Database(Uints);
   window.dbInstance = db;
   window.recipeId = recipeId;
 

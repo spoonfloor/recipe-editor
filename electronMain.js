@@ -9,9 +9,9 @@ const fs = require('fs');
 const path = require('path');
 
 // 🔧 Adjustable constants
-// Default DB path (used if user never picked a file)
-let ACTIVE_DB_PATH =
-  '/Volumes/primary/eric_files/websites/favorite_eats/database/favorite_eats.db';
+
+let ACTIVE_DB_PATH = null;
+const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 
 const MAX_BACKUPS = 8;
 
@@ -81,6 +81,10 @@ function createWindow() {
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true, // isolate renderer from Node
+      nodeIntegration: false, // no require() / process in renderer
+      sandbox: false, // keep one execution world (sql.js friendly)
+      enableRemoteModule: false, // belt & suspenders
     },
   });
 
@@ -88,10 +92,40 @@ function createWindow() {
   win.loadFile('index.html');
 }
 
+// --- Config helpers (remember last DB path) ---
+function loadConfig() {
+  try {
+    const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+    const json = JSON.parse(raw);
+    if (json && typeof json.lastDb === 'string' && fs.existsSync(json.lastDb)) {
+      ACTIVE_DB_PATH = json.lastDb;
+      console.log('📌 Restored last DB from config:', ACTIVE_DB_PATH);
+    }
+  } catch (_) {
+    // no config yet or unreadable; ignore
+  }
+}
+
+function saveConfig() {
+  try {
+    fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
+    fs.writeFileSync(
+      CONFIG_FILE,
+      JSON.stringify({ lastDb: ACTIVE_DB_PATH }, null, 2)
+    );
+  } catch (err) {
+    console.warn('⚠️ Could not persist config:', err.message);
+  }
+}
+
 // --- File I/O helpers ---
 
 ipcMain.handle('loadDB', async (event, pathArg = null) => {
-  ACTIVE_DB_PATH = pathArg || ACTIVE_DB_PATH;
+  if (pathArg) {
+    ACTIVE_DB_PATH = pathArg;
+    saveConfig();
+  }
+
   console.log('📖 Loading DB from:', ACTIVE_DB_PATH);
   return fs.promises.readFile(ACTIVE_DB_PATH);
 });
@@ -162,6 +196,11 @@ ipcMain.handle('pickDB', async (event, lastPath = null) => {
   if (result.canceled) return null;
   const chosen = result.filePaths[0];
   if (!chosen) return null;
+
+  // persist selected DB for next launch
+  ACTIVE_DB_PATH = chosen;
+  saveConfig();
+
   const isInBackupFolder = /(^|[\\/])Backup([\\/]|$)/i.test(
     path.normalize(chosen)
   );
@@ -186,6 +225,8 @@ ipcMain.handle('getEnv', async () => ({
 
 // --- App startup ---
 app.whenReady().then(() => {
+  loadConfig();
+
   createWindow();
 
   app.on('activate', () => {
