@@ -200,8 +200,17 @@ async function loadRecipeEditorPage() {
   window.dbInstance = db;
   window.recipeId = recipeId;
 
-  // Fetch and render the recipe
-  const recipe = formatRecipe(db, recipeId);
+  // Fetch via bridge (single source of truth)
+  const recipe = bridge.loadRecipeFromDB(db, recipeId);
+  // Compatibility shim for existing UI
+  if (
+    !recipe.servingsDefault &&
+    recipe.servings &&
+    recipe.servings.default != null
+  ) {
+    recipe.servingsDefault = recipe.servings.default;
+  }
+
   const titleEl = document.getElementById('recipeTitle');
   if (titleEl) titleEl.textContent = recipe.title;
   renderRecipe(recipe);
