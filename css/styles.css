@@ -5,7 +5,7 @@
   --headline-font-size: 16px;
   --theme-primary: #6d49ff;
   --theme-secondary: #7f5cff;
-  --theme-light: #f2f0fe;
+  --theme-light: hsl(252, 100%, 97%);
   --font-color-near-black: #191919;
   --app-bar-height: 64px;
   --header-font-size: 16px;
@@ -269,7 +269,6 @@ h1.nav-text {
 /* Highlight selected step for keyboard reordering */
 .instruction-line.selected {
   background-color: var(--theme-light);
-  /* outline: 2px solid var(--theme-primary); */
   border-radius: 8px;
   position: relative;
   left: -10px;

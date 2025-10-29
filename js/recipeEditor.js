@@ -1,6 +1,8 @@
 console.log('✅ recipeEditor.js loaded at', new Date().toISOString());
 
 // Recipe editor
+// --- Inline edit state ---
+window.editingStepId = null;
 
 // --- Display modes ---
 const SHOW_RECIPE_TEXT = true; // normal human-readable output
@@ -269,6 +271,9 @@ function setupStepReordering(container, db, recipeId) {
   // single global key handler
   if (!stepReorderCtx.handlerInstalled) {
     document.addEventListener('keydown', (e) => {
+      // ⛔ suspend reordering while editing a step
+      if (window.editingStepId) return;
+
       const ctx = stepReorderCtx;
       const activeStep = ctx.activeStep;
       const containerRef = ctx.container;
@@ -546,13 +551,71 @@ function renderRecipe(recipe) {
     recipe.steps.forEach((step, i) => {
       const line = document.createElement('div');
       line.className = 'instruction-line numbered';
-      line.innerHTML = `
-        <span class="step-num">${i + 1}.</span>
-        <span class="step-text" data-step-id="${step.id}">
-          ${step.instructions}
-        </span>
-      `;
+
+      // build nodes to avoid innerHTML issues
+      const num = document.createElement('span');
+      num.className = 'step-num';
+      num.textContent = `${i + 1}.`;
+      const text = document.createElement('span');
+      text.className = 'step-text';
+      text.dataset.stepId = String(step.id);
+      text.textContent = step.instructions ?? '';
+      line.appendChild(num);
+      line.appendChild(text);
+
       stepsSection.appendChild(line);
+
+      // 🖊️ Double-click to edit (Enter/blur commit, Esc cancel)
+      text.addEventListener('dblclick', () => {
+        if (window.editingStepId) return; // one at a time
+        window.editingStepId = text.dataset.stepId;
+        const original = text.textContent;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = original;
+        input.className = 'step-input';
+        // replace contents
+        text.textContent = '';
+        text.appendChild(input);
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+
+        const commit = () => {
+          const newVal = input.value;
+          // update model
+          const rid = window.recipeData;
+          if (rid && Array.isArray(rid.sections)) {
+            for (const sec of rid.sections) {
+              const s = (sec.steps || []).find(
+                (st) => String(st.ID ?? st.id) === window.editingStepId
+              );
+              if (s) {
+                s.instructions = newVal;
+                break;
+              }
+            }
+          }
+          text.textContent = newVal;
+          window.editingStepId = null;
+          markDirty();
+        };
+
+        const cancel = () => {
+          text.textContent = original;
+          window.editingStepId = null;
+        };
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+          }
+        });
+        input.addEventListener('blur', commit);
+      });
     });
 
     // ✅ Enable reordering
