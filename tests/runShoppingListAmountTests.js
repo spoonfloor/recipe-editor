@@ -469,6 +469,17 @@ function run() {
   );
 
   assertEqual(
+    helpers.formatShoppingListDisplayDetailText({
+      buckets: [
+        { key: 'unspecified', kind: 'unspecified', quantity: 1 },
+        { key: 'unspecified', kind: 'unspecified', quantity: 1 },
+      ],
+    }),
+    'some',
+    'duplicate unspecified buckets collapse to a single some'
+  );
+
+  assertEqual(
     helpers.formatShoppingListDisplayRow({
       name: 'ginger',
       variantName: 'large',

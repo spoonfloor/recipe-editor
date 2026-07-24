@@ -136,7 +136,7 @@
     uiToast,
     uiConfirm,
     uiToastUndo,
-    confirmRemoveFromPlanningList,
+    promptRemoveItemFromMenuPlan,
     isControlClickRemoveGesture,
     isControlPrimaryContextMenuGesture,
     registerFavoriteEatsRemotePlanUiRefreshHook,
@@ -175,6 +175,7 @@
     getUnitSizeRemovalAction,
     getVisibleIngredientTagNamePool,
     isIngredientBaseVariantName,
+    isShoppingBrowseBaseVariantName,
     makeIngredientVariantShoppingPlanKey,
     normalizeShoppingHomeLocationId,
     resolveBrowseIvKeyForPlanRow,
@@ -1635,13 +1636,199 @@
         hasAmountTail,
       }),
   });
-  const canResetBrowsePlannerDirectRow = (planKey) => {
+  const getMenuPlanItemRemoveContext = (planKey) => {
     const key = String(planKey || '').trim();
-    if (!key) return false;
-    return (
+    if (!key) return null;
+    const hasDirect =
       hasPositiveShoppingQty(getDirectShoppingQty(key)) ||
-      shoppingQuantityUnspecifiedKeys.has(key)
+      planKeyHasDirectUnspecifiedSelection(key);
+
+    const planRow = getBrowsePlanRow(key);
+    const recipeContributors = [];
+    const seenRecipeKeys = new Set();
+    (Array.isArray(planRow?.contributionRows) ? planRow.contributionRows : [])
+      .filter((entry) => String(entry?.sourceType || '') === 'recipe')
+      .forEach((entry) => {
+        const recipeId = Number(entry?.recipeId);
+        const dedupeKey =
+          Number.isFinite(recipeId) && recipeId > 0
+            ? `id:${Math.trunc(recipeId)}`
+            : String(entry?.title || '').trim().toLowerCase();
+        if (!dedupeKey || seenRecipeKeys.has(dedupeKey)) return;
+        seenRecipeKeys.add(dedupeKey);
+        recipeContributors.push({
+          id:
+            Number.isFinite(recipeId) && recipeId > 0
+              ? Math.trunc(recipeId)
+              : null,
+          title:
+            String(entry?.title || '').trim() ||
+            (Number.isFinite(recipeId) && recipeId > 0
+              ? `Recipe ${Math.trunc(recipeId)}`
+              : 'Recipe'),
+        });
+      });
+    recipeContributors.sort((a, b) =>
+      String(a.title || '').localeCompare(String(b.title || ''), undefined, {
+        sensitivity: 'base',
+      }),
     );
+
+    const hasRecipe =
+      recipeContributors.length > 0 ||
+      hasPositiveShoppingQty(getRecipeShoppingQty(key));
+    if (!hasDirect && !hasRecipe) return null;
+
+    return {
+      hasDirect,
+      hasRecipe,
+      recipeContributors,
+    };
+  };
+  const mergeMenuPlanRecipeContributors = (target, sourceEntries) => {
+    const seenRecipeKeys = new Set(
+      (Array.isArray(target) ? target : []).map((entry) => {
+        const recipeId = Number(entry?.id);
+        return Number.isFinite(recipeId) && recipeId > 0
+          ? `id:${Math.trunc(recipeId)}`
+          : String(entry?.title || '').trim().toLowerCase();
+      }),
+    );
+    const merged = Array.isArray(target) ? target.slice() : [];
+    (Array.isArray(sourceEntries) ? sourceEntries : []).forEach((entry) => {
+      const recipeId = Number(entry?.id);
+      const dedupeKey =
+        Number.isFinite(recipeId) && recipeId > 0
+          ? `id:${Math.trunc(recipeId)}`
+          : String(entry?.title || '').trim().toLowerCase();
+      if (!dedupeKey || seenRecipeKeys.has(dedupeKey)) return;
+      seenRecipeKeys.add(dedupeKey);
+      merged.push(entry);
+    });
+    merged.sort((a, b) =>
+      String(a.title || '').localeCompare(String(b.title || ''), undefined, {
+        sensitivity: 'base',
+      }),
+    );
+    return merged;
+  };
+  const plannerParentHandlesRemoveDirectly = (allVariantNames, namedVariants) => {
+    const names = Array.isArray(allVariantNames) ? allVariantNames : [];
+    const named = Array.isArray(namedVariants) ? namedVariants : [];
+    if (names.length === 1) return true;
+    if (named.length === 1) return true;
+    if (
+      named.length === 0 &&
+      names.length > 0 &&
+      names.every((variantName) =>
+        isShoppingBrowseBaseVariantName(
+          variantName === 'default' ? 'default' : variantName,
+        ),
+      )
+    ) {
+      return true;
+    }
+    return false;
+  };
+  const getPlannerParentRemoveContext = (baseName, allVariantNames, browseItem) => {
+    let hasDirect = false;
+    let hasRecipe = false;
+    let recipeContributors = [];
+    (Array.isArray(allVariantNames) ? allVariantNames : []).forEach(
+      (variantName) => {
+        const planKey = getBrowseVariantPlanKey(
+          baseName,
+          variantName,
+          browseItem,
+        );
+        const ctx = getMenuPlanItemRemoveContext(planKey);
+        if (!ctx) return;
+        hasDirect = hasDirect || ctx.hasDirect;
+        hasRecipe = hasRecipe || ctx.hasRecipe;
+        recipeContributors = mergeMenuPlanRecipeContributors(
+          recipeContributors,
+          ctx.recipeContributors,
+        );
+      },
+    );
+    if (!hasDirect && !hasRecipe) return null;
+    return { hasDirect, hasRecipe, recipeContributors };
+  };
+  const runMenuPlanItemRemove = (
+    planKey,
+    displayName,
+    meta = null,
+    onAfterRemove = null,
+  ) => {
+    const key = String(planKey || '').trim();
+    if (!key) return;
+    const context = getMenuPlanItemRemoveContext(key);
+    if (!context) return;
+    void (async () => {
+      const removed = await promptRemoveItemFromMenuPlan({
+        displayName,
+        hasDirect: context.hasDirect,
+        hasRecipe: context.hasRecipe,
+        recipeContributors: context.recipeContributors,
+        removeDirect: async () => {
+          bumpShoppingBrowsePlannerEdit();
+          enqueueShoppingPlannerDirectQty(key, 0, meta);
+        },
+      });
+      if (!removed) return;
+      if (typeof onAfterRemove === 'function') {
+        onAfterRemove();
+      }
+    })();
+  };
+  const runMenuPlanParentItemRemove = (
+    baseName,
+    allVariantNames,
+    browseItem,
+    displayName,
+    onAfterRemove = null,
+  ) => {
+    const context = getPlannerParentRemoveContext(
+      baseName,
+      allVariantNames,
+      browseItem,
+    );
+    if (!context) return;
+    void (async () => {
+      const removed = await promptRemoveItemFromMenuPlan({
+        displayName,
+        hasDirect: context.hasDirect,
+        hasRecipe: context.hasRecipe,
+        recipeContributors: context.recipeContributors,
+        removeDirect: async () => {
+          bumpShoppingBrowsePlannerEdit();
+          (Array.isArray(allVariantNames) ? allVariantNames : []).forEach(
+            (variantName) => {
+              const planKey = getBrowseVariantPlanKey(
+                baseName,
+                variantName,
+                browseItem,
+              );
+              const keyContext = getMenuPlanItemRemoveContext(planKey);
+              if (!keyContext?.hasDirect) return;
+              enqueueShoppingPlannerDirectQty(planKey, 0, {
+                itemName: baseName,
+                variantName:
+                  variantName === 'default' ? 'default' : variantName,
+                ingredientVariantId: resolveBrowseIngredientVariantId(
+                  browseItem,
+                  variantName,
+                ),
+              });
+            },
+          );
+        },
+      });
+      if (!removed) return;
+      if (typeof onAfterRemove === 'function') {
+        onAfterRemove();
+      }
+    })();
   };
   const syncBrowsePlannerRowAmountButton = (rowEl, planKey) => {
     const amountBtn = rowEl.querySelector(
@@ -3953,12 +4140,10 @@
             variantName,
           );
           const promptRemoveVariantFromPlanningList = () => {
-            if (!canResetBrowsePlannerDirectRow(varKey)) return;
-            void (async () => {
-              const ok = await confirmRemoveFromPlanningList(removeLabel);
-              if (!ok) return;
-              bumpShoppingBrowsePlannerEdit();
-              enqueueShoppingPlannerDirectQty(varKey, 0, {
+            runMenuPlanItemRemove(
+              varKey,
+              removeLabel,
+              {
                 itemName: baseName,
                 variantName:
                   variantName === 'default' ? 'default' : variantName,
@@ -3966,14 +4151,16 @@
                   item,
                   variantName,
                 ),
-              });
-              if (shoppingRowStepperController.isActive(varKey)) {
-                shoppingRowStepperController.collapseActive();
-              }
-              refreshShoppingSelectionUi({ fullRerender: false });
-              syncVariantChildVisuals(childLi, varKey);
-              syncParentVisuals();
-            })();
+              },
+              () => {
+                if (shoppingRowStepperController.isActive(varKey)) {
+                  shoppingRowStepperController.collapseActive();
+                }
+                refreshShoppingSelectionUi({ fullRerender: false });
+                syncVariantChildVisuals(childLi, varKey);
+                syncParentVisuals();
+              },
+            );
           };
 
           childLi.addEventListener(
@@ -4022,6 +4209,35 @@
           childRows.push(childLi);
         });
 
+        const parentRemoveOnPrimaryGesture = plannerParentHandlesRemoveDirectly(
+          allVariantNames,
+          namedVariants,
+        );
+        const syncParentRowAfterMenuPlanRemove = () => {
+          if (shoppingRowStepperController.collapseActive()) {
+            shoppingRowStepperController.collapseActive();
+          }
+          refreshShoppingSelectionUi({ fullRerender: false });
+          syncParentVisuals();
+          childRows.forEach((row) => {
+            const varKey = String(row.dataset.variantQtyKey || '');
+            if (varKey) syncVariantChildVisuals(row, varKey);
+          });
+        };
+        const handlePlannerParentPrimaryRemoveGesture = () => {
+          if (parentRemoveOnPrimaryGesture) {
+            runMenuPlanParentItemRemove(
+              baseName,
+              allVariantNames,
+              item,
+              displayName,
+              syncParentRowAfterMenuPlanRemove,
+            );
+            return;
+          }
+          toggleExpansion();
+        };
+
         const clearAllVariantQuantities = () => {
           allVariantNames.forEach((variantName) => {
             const vk = getBrowseVariantPlanKey(baseName, variantName, item);
@@ -4069,26 +4285,12 @@
           window.location.href = getShoppingEditorHref();
         });
 
-        const promptRemoveVariantParentFromPlanningList = () => {
-          const directTotal = getItemDirectTotalQty(
-            baseName,
-            item.variants,
-            item,
-          );
-          if (!hasPositiveShoppingQty(directTotal)) return;
-          void (async () => {
-            const ok = await confirmRemoveFromPlanningList(displayName);
-            if (!ok) return;
-            clearAllVariantQuantities();
-          })();
-        };
-
         li.addEventListener('click', (event) => {
           const plannerSelectMode = isShoppingPlannerSelectMode();
           if (plannerSelectMode && isControlClickRemoveGesture(event)) {
             event.preventDefault();
             event.stopPropagation();
-            promptRemoveVariantParentFromPlanningList();
+            handlePlannerParentPrimaryRemoveGesture();
             return;
           }
           const wantsRemove = event.ctrlKey || event.metaKey;
@@ -4130,7 +4332,7 @@
             if (isControlPrimaryContextMenuGesture(event)) {
               event.preventDefault();
               event.stopPropagation();
-              promptRemoveVariantParentFromPlanningList();
+              handlePlannerParentPrimaryRemoveGesture();
               return;
             }
             event.preventDefault();
@@ -4150,7 +4352,7 @@
           li,
           () => {
             if (isShoppingPlannerSelectMode()) {
-              promptRemoveVariantParentFromPlanningList();
+              handlePlannerParentPrimaryRemoveGesture();
               return;
             }
             void (async () => {
@@ -4259,17 +4461,12 @@
 
       const promptRemoveSimpleRowFromPlanningList = () => {
         const key = simpleRowKey();
-        if (!canResetBrowsePlannerDirectRow(key)) return;
-        void (async () => {
-          const ok = await confirmRemoveFromPlanningList(displayName);
-          if (!ok) return;
-          bumpShoppingBrowsePlannerEdit();
-          enqueueShoppingPlannerDirectQty(key, 0, { itemName: baseName });
+        runMenuPlanItemRemove(key, displayName, { itemName: baseName }, () => {
           if (shoppingRowStepperController.isActive(key)) {
             shoppingRowStepperController.collapseActive();
           }
           refreshShoppingSelectionUi({ fullRerender: false });
-        })();
+        });
       };
 
       li.addEventListener('click', (event) => {

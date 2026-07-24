@@ -357,6 +357,144 @@ async function uiConfirm({
   return false;
 }
 
+function classifyMenuPlanItemRemoveCase({ hasDirect = false, hasRecipe = false } = {}) {
+  const direct = !!hasDirect;
+  const recipe = !!hasRecipe;
+  if (direct && !recipe) return 'direct-only';
+  if (!direct && recipe) return 'recipe-only';
+  if (direct && recipe) return 'mixed';
+  return 'none';
+}
+
+function buildMenuPlanItemRemoveRecipeLinksNode(recipes) {
+  const linksWrap = document.createElement('div');
+  linksWrap.className = 'shopping-remove-dialog-links';
+  (Array.isArray(recipes) ? recipes : []).forEach((recipe) => {
+    const recipeId = Number(recipe?.id);
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'shopping-remove-dialog-link';
+    a.textContent =
+      String(recipe?.title || '').trim() ||
+      (Number.isFinite(recipeId) && recipeId > 0
+        ? `Recipe ${Math.trunc(recipeId)}`
+        : 'Recipe');
+    a.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (
+        Number.isFinite(recipeId) &&
+        recipeId > 0 &&
+        typeof window.openRecipe === 'function'
+      ) {
+        window.openRecipe(Math.trunc(recipeId), recipe?.title || '');
+      }
+    });
+    linksWrap.appendChild(a);
+  });
+  return linksWrap;
+}
+
+async function promptRemoveItemFromMenuPlan({
+  displayName = '',
+  hasDirect = false,
+  hasRecipe = false,
+  recipeContributors = [],
+  removeDirect = null,
+} = {}) {
+  const name = String(displayName || '').trim();
+  if (!name) return false;
+
+  const removeCase = classifyMenuPlanItemRemoveCase({ hasDirect, hasRecipe });
+  if (removeCase === 'none') return false;
+
+  const recipes = Array.isArray(recipeContributors) ? recipeContributors : [];
+  const recipeCount = recipes.length;
+  const thisTheseRecipes = recipeCount === 1 ? 'this recipe' : 'these recipes';
+  const theRecipes = recipeCount === 1 ? 'the recipe' : 'the recipes';
+
+  if (removeCase === 'recipe-only') {
+    const usageLine =
+      recipeCount === 1
+        ? `The item '${name}' is used in this recipe:`
+        : `The item '${name}' is used in these recipes:`;
+    const details = document.createElement('div');
+    details.className = 'shopping-remove-dialog-details';
+    if (recipeCount > 0) {
+      details.appendChild(buildMenuPlanItemRemoveRecipeLinksNode(recipes));
+    }
+    const note = document.createElement('div');
+    note.className = 'shopping-remove-dialog-note';
+    note.textContent = `To remove it, first remove ${theRecipes} above from your menu plan.`;
+    details.appendChild(note);
+
+    if (window.ui && typeof window.ui.dialog === 'function') {
+      await window.ui.dialog({
+        title: 'Remove item',
+        message: usageLine,
+        messageNode: details,
+        confirmText: 'OK',
+        showCancel: false,
+      });
+    } else {
+      await uiConfirm({
+        title: 'Remove item',
+        message: `${usageLine} To remove it, first remove ${theRecipes} above from your menu plan.`,
+        confirmText: 'OK',
+        cancelText: 'Cancel',
+      });
+    }
+    return false;
+  }
+
+  let message = '';
+  let messageNode = null;
+  let confirmText = 'Remove';
+
+  if (removeCase === 'direct-only') {
+    message = `Remove '${name}' from menu plan? This will set the item quantity to zero and remove it from your shopping list.`;
+  } else {
+    message = `Remove '${name}'? This item has been added directly and also appears in ${thisTheseRecipes}:`;
+    const details = document.createElement('div');
+    details.className = 'shopping-remove-dialog-details';
+    if (recipeCount > 0) {
+      details.appendChild(buildMenuPlanItemRemoveRecipeLinksNode(recipes));
+    }
+    const note = document.createElement('div');
+    note.className = 'shopping-remove-dialog-note';
+    note.textContent = `To remove it entirely, first remove ${theRecipes} above from your menu plan. Or, you can remove just the directly added amount.`;
+    details.appendChild(note);
+    messageNode = details;
+    confirmText = 'Remove direct amount';
+  }
+
+  let ok = false;
+  if (window.ui && typeof window.ui.dialog === 'function') {
+    const res = await window.ui.dialog({
+      title: 'Remove item',
+      message,
+      ...(messageNode ? { messageNode } : {}),
+      confirmText,
+      cancelText: 'Cancel',
+      danger: true,
+    });
+    ok = !!res;
+  } else {
+    ok = await uiConfirm({
+      title: 'Remove item',
+      message,
+      confirmText,
+      cancelText: 'Cancel',
+      danger: true,
+    });
+  }
+
+  if (!ok) return false;
+  if (typeof removeDirect === 'function') {
+    await removeDirect();
+  }
+  return true;
+}
+
 async function confirmRemoveFromPlanningList(displayName) {
   const name = String(displayName || '').trim();
   if (!name) return false;
@@ -2013,6 +2151,20 @@ function buildShoppingListDisplayMergeBuckets(
       quantity: plainQty,
     });
   }
+  const unspecifiedTails = tails.filter((bucket) => bucket.kind === 'unspecified');
+  if (unspecifiedTails.length > 1) {
+    tails = tails.filter((bucket) => bucket.kind !== 'unspecified');
+    tails.unshift({
+      key: 'unspecified',
+      kind: 'unspecified',
+      quantity:
+        unspecifiedTails.reduce(
+          (sum, bucket) => sum + Math.max(0, Number(bucket.quantity || 0)),
+          0,
+        ) || 1,
+    });
+  }
+
   displayBuckets.push(...tails);
   return displayBuckets;
 }
@@ -6441,6 +6593,8 @@ function registerFavoriteEatsItemsPageBridge() {
     uiConfirm,
     uiToastUndo,
     confirmRemoveFromPlanningList,
+    promptRemoveItemFromMenuPlan,
+    classifyMenuPlanItemRemoveCase,
     isControlClickRemoveGesture,
     isControlPrimaryContextMenuGesture,
     registerFavoriteEatsRemotePlanUiRefreshHook,
@@ -6488,6 +6642,7 @@ function registerFavoriteEatsItemsPageBridge() {
     getUnitSizeRemovalAction,
     getVisibleIngredientTagNamePool,
     isIngredientBaseVariantName,
+    isShoppingBrowseBaseVariantName,
     makeIngredientVariantShoppingPlanKey,
     normalizeShoppingHomeLocationId,
     resolveBrowseIvKeyForPlanRow,
