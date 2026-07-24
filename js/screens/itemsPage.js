@@ -127,6 +127,8 @@
     runWithShoppingPlanMutationBatch,
     flushCoalescedPlanSaveToDataService,
     flushPlanNarrowRpcQueuesWithSessionCommitBatch,
+    abortPlanInputSyncQueuesForWholesaleClear,
+    runFavoriteEatsRemoteShoppingPlanRefresh,
     createEmptyShoppingPlan,
     cloneForUndo,
     clearShoppingPlanSelections,
@@ -470,6 +472,7 @@
   const activeFilterChips = new Set();
   const selectedShoppingNames = new Set();
   const shoppingQuantities = new Map();
+  const shoppingQuantityUnspecifiedKeys = new Set();
   const shoppingRecipeQuantities = new Map();
   const shoppingSelectionMeta = new Map();
   let shoppingChipCounts = new Map();
@@ -629,6 +632,7 @@
     const directQty = Number((desiredQty - recipeQty).toFixed(4));
     if (Math.abs(directQty) < SHOPPING_QTY_EPSILON) {
       shoppingQuantities.delete(normalizedKey);
+      shoppingQuantityUnspecifiedKeys.delete(normalizedKey);
       selectedShoppingNames.delete(normalizedKey);
       shoppingSelectionMeta.delete(normalizedKey);
       setShoppingPlanItemSelection(
@@ -637,6 +641,7 @@
       );
     } else {
       shoppingQuantities.set(normalizedKey, directQty);
+      shoppingQuantityUnspecifiedKeys.delete(normalizedKey);
       selectedShoppingNames.add(normalizedKey);
       const persistedMeta = shoppingSelectionMeta.get(normalizedKey) || {};
       setShoppingPlanItemSelection(
@@ -652,8 +657,39 @@
     }
     syncShoppingActionButtonState();
   };
+  const setShoppingUnspecifiedSelection = (key, meta = null, options = {}) => {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey) return;
+    const nextMeta =
+      meta && typeof meta === 'object' && !Array.isArray(meta) ? meta : {};
+    const itemName = String(nextMeta.itemName || nextMeta.name || '').trim();
+    const variantName = String(nextMeta.variantName || '').trim();
+    const metaIv = Number(nextMeta.ingredientVariantId);
+    const ingredientVariantIdFromMeta =
+      Number.isFinite(metaIv) && metaIv > 0 ? Math.trunc(metaIv) : null;
+    if (itemName || variantName || !shoppingSelectionMeta.has(normalizedKey)) {
+      shoppingSelectionMeta.set(normalizedKey, { itemName, variantName });
+    }
+    shoppingQuantities.delete(normalizedKey);
+    shoppingQuantityUnspecifiedKeys.add(normalizedKey);
+    selectedShoppingNames.add(normalizedKey);
+    const persistedMeta = shoppingSelectionMeta.get(normalizedKey) || {};
+    setShoppingPlanItemSelection(
+      {
+        key: normalizedKey,
+        name: persistedMeta.itemName || itemName || normalizedKey,
+        variantName: persistedMeta.variantName || variantName,
+        quantity: 0,
+        quantityUnspecified: true,
+        ingredientVariantId: ingredientVariantIdFromMeta,
+      },
+      options,
+    );
+    syncShoppingActionButtonState();
+  };
   const hydrateShoppingSelectionsFromPlan = () => {
     shoppingQuantities.clear();
+    shoppingQuantityUnspecifiedKeys.clear();
     selectedShoppingNames.clear();
     shoppingSelectionMeta.clear();
     const storedSelections = getShoppingPlanItemSelections();
@@ -661,26 +697,36 @@
       const key = String(rawKey || '').trim();
       if (!key) return;
       const entry = storedSelections[rawKey];
+      const quantityUnspecified = entry?.quantityUnspecified === true;
       const quantity = Number(entry?.quantity);
-      if (
-        !Number.isFinite(quantity) ||
-        Math.abs(quantity) < SHOPPING_QTY_EPSILON
-      )
-        return;
-      shoppingQuantities.set(key, quantity);
-      selectedShoppingNames.add(key);
       const rawIv = Number(entry?.ingredientVariantId);
       const ingredientVariantId =
         Number.isFinite(rawIv) && rawIv > 0 ? Math.trunc(rawIv) : null;
-      shoppingSelectionMeta.set(key, {
+      const meta = {
         itemName: String(entry?.name || '').trim(),
         variantName: String(entry?.variantName || '').trim(),
         ...(ingredientVariantId ? { ingredientVariantId } : {}),
-      });
+      };
+      if (quantityUnspecified) {
+        shoppingQuantityUnspecifiedKeys.add(key);
+        selectedShoppingNames.add(key);
+        shoppingSelectionMeta.set(key, meta);
+        return;
+      }
+      if (
+        !Number.isFinite(quantity) ||
+        Math.abs(quantity) < SHOPPING_QTY_EPSILON
+      ) {
+        return;
+      }
+      shoppingQuantities.set(key, quantity);
+      selectedShoppingNames.add(key);
+      shoppingSelectionMeta.set(key, meta);
     });
   };
   const clearShoppingPlannerUiState = () => {
     shoppingQuantities.clear();
+    shoppingQuantityUnspecifiedKeys.clear();
     shoppingRecipeQuantities.clear();
     selectedShoppingNames.clear();
     shoppingSelectionMeta.clear();
@@ -912,7 +958,10 @@
     }
     return null;
   };
+  const planKeyHasDirectUnspecifiedSelection = (planKey) =>
+    shoppingQuantityUnspecifiedKeys.has(String(planKey || '').trim());
   const getBrowseDisplayBucketsForKey = (planKey) => {
+    const key = String(planKey || '').trim();
     const row = getBrowsePlanRow(planKey);
     const tails = (Array.isArray(row?.buckets) ? row.buckets : []).filter(
       (bucket) => bucket && bucket.kind !== 'selected',
@@ -923,6 +972,15 @@
         { key: 'selected', kind: 'selected', quantity: direct },
         ...tails.map((bucket) => ({ ...bucket })),
       ];
+    }
+    if (planKeyHasDirectUnspecifiedSelection(key)) {
+      const hasUnspecifiedTail = tails.some(
+        (bucket) => bucket && bucket.kind === 'unspecified',
+      );
+      const directSome = hasUnspecifiedTail
+        ? []
+        : [{ key: 'unspecified', kind: 'unspecified', quantity: 1 }];
+      return [...directSome, ...tails.map((bucket) => ({ ...bucket }))];
     }
     return tails.map((bucket) => ({ ...bucket }));
   };
@@ -937,7 +995,7 @@
   const browsePlannerRowHasAmountTail = (planKey) => {
     const row = getBrowsePlanRow(planKey);
     return shoppingBrowsePlannerRowHasAmountTail(
-      Array.isArray(row?.buckets) ? row.buckets : [],
+      getBrowseDisplayBucketsForKey(planKey),
       {
         variantName: row?.variantName || '',
         useMetric: !!row?.useMetric,
@@ -967,6 +1025,7 @@
     return getBrowsePlannerDirectQtyForPlainStep(planKey, nextPlain);
   };
   const planKeyHasBrowsePlannerSelection = (planKey) =>
+    planKeyHasDirectUnspecifiedSelection(planKey) ||
     hasPositiveShoppingQty(getBrowsePlannerPlainStepQty(planKey)) ||
     browsePlannerRowHasAmountTail(planKey);
   const browsePlannerDecreaseClearsSelection = (planKey) => {
@@ -1096,6 +1155,16 @@
       value: op.value,
       clientSeq: op.clientSeq || null,
     });
+    const meta = op.meta && typeof op.meta === 'object' ? op.meta : {};
+    if (
+      meta.quantityUnspecified === true &&
+      !hasPositiveShoppingQty(Number(op.value || 0))
+    ) {
+      setShoppingUnspecifiedSelection(op.entityKey, meta, {
+        skipRemoteSave: true,
+      });
+      return;
+    }
     setShoppingQtyFromDirectValue(op.entityKey, op.value, op.meta, {
       skipRemoteSave: true,
     });
@@ -1130,7 +1199,24 @@
       request.ingredientVariantId =
         Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
     }
+    if (meta.quantityUnspecified === true) {
+      request.quantityUnspecified = true;
+    }
     const result = await window.dataService.setPlanItemQuantity(request);
+    const rpcOk = !result || result.ok !== false;
+    const rpcDeleted =
+      result && typeof result === 'object' && result.deleted === true;
+    if (meta.quantityUnspecified === true && (!rpcOk || rpcDeleted)) {
+      const reason =
+        result && typeof result === 'object' && result.reason
+          ? String(result.reason)
+          : rpcDeleted
+            ? 'server treated unspecified selection as delete'
+            : 'rpc failed';
+      throw new Error(
+        `Could not persist unspecified plan selection for ${itemKey}: ${reason}`,
+      );
+    }
     logShoppingPlannerQtySync('rpc returned', {
       itemKey,
       value: request.quantity,
@@ -1184,6 +1270,8 @@
     if (!itemKey) return false;
     const nextDirect = isDelete ? 0 : Math.max(0, Number(rowData.quantity || 0));
     if (!Number.isFinite(nextDirect)) return false;
+    const quantityUnspecified =
+      !isDelete && rowData.quantity_unspecified === true;
     const updatedAt = rowData.updated_at || null;
     const opLike = { surface: 'plan', entityKey: itemKey, field: 'quantity' };
     if (
@@ -1216,9 +1304,15 @@
       ingredientVariantId:
         Number.isFinite(rawIv) && rawIv > 0 ? Math.trunc(rawIv) : null,
     };
-    setShoppingQtyFromDirectValue(itemKey, nextDirect, meta, {
-      skipRemoteSave: true,
-    });
+    if (quantityUnspecified && nextDirect <= SHOPPING_QTY_EPSILON) {
+      setShoppingUnspecifiedSelection(itemKey, meta, {
+        skipRemoteSave: true,
+      });
+    } else {
+      setShoppingQtyFromDirectValue(itemKey, nextDirect, meta, {
+        skipRemoteSave: true,
+      });
+    }
     logShoppingPlannerQtySync('child patch applied', {
       itemKey,
       value: nextDirect,
@@ -1232,6 +1326,8 @@
       shoppingPlannerQtyInputQueue.recordEchoApplied(opLike, {
         updated_at: updatedAt,
         value: nextDirect,
+        quantityUnspecified:
+          quantityUnspecified && nextDirect <= SHOPPING_QTY_EPSILON,
       });
     }
     // Items list is only visible in planner-select mode; the DOM refresh is
@@ -1269,6 +1365,32 @@
         meta && typeof meta === 'object' && !Array.isArray(meta)
           ? { ...meta }
           : {},
+      clientSeq: (shoppingBrowsePlannerInputSeq += 1),
+    });
+  };
+  const enqueueShoppingPlannerUnspecifiedSelection = (key, meta = null) => {
+    const normalizedKey = String(key || '').trim();
+    if (!normalizedKey) return false;
+    if (!shoppingPlannerQtyInputQueue) {
+      setShoppingUnspecifiedSelection(normalizedKey, meta);
+      return true;
+    }
+    logShoppingPlannerQtySync('enqueue requested', {
+      itemKey: normalizedKey,
+      value: 0,
+      clientSeq: shoppingBrowsePlannerInputSeq + 1,
+    });
+    return shoppingPlannerQtyInputQueue.enqueue({
+      surface: 'plan',
+      entityKey: normalizedKey,
+      field: 'quantity',
+      value: 0,
+      meta: {
+        ...(meta && typeof meta === 'object' && !Array.isArray(meta)
+          ? { ...meta }
+          : {}),
+        quantityUnspecified: true,
+      },
       clientSeq: (shoppingBrowsePlannerInputSeq += 1),
     });
   };
@@ -1516,7 +1638,10 @@
   const canResetBrowsePlannerDirectRow = (planKey) => {
     const key = String(planKey || '').trim();
     if (!key) return false;
-    return hasPositiveShoppingQty(getDirectShoppingQty(key));
+    return (
+      hasPositiveShoppingQty(getDirectShoppingQty(key)) ||
+      shoppingQuantityUnspecifiedKeys.has(key)
+    );
   };
   const syncBrowsePlannerRowAmountButton = (rowEl, planKey) => {
     const amountBtn = rowEl.querySelector(
@@ -2091,6 +2216,34 @@
     }
   };
 
+  const persistPlannerItemSelectionsWholesaleIfRemote = async () => {
+    if (
+      !shouldUseRemoteShoppingState() ||
+      typeof flushCoalescedPlanSaveToDataService !== 'function'
+    ) {
+      return;
+    }
+    await flushCoalescedPlanSaveToDataService({ awaited: true });
+  };
+
+  const flushPlannerSelectionsAfterBulkAddIfRemote = async () => {
+    try {
+      await flushPlanNarrowRpcBatchIfRemote();
+    } catch (err) {
+      console.warn(
+        'Items planner narrow quantity flush failed; falling back to wholesale plan save:',
+        err,
+      );
+      try {
+        await persistPlannerItemSelectionsWholesaleIfRemote();
+      } catch (fallbackErr) {
+        console.warn('Items planner wholesale plan save fallback failed:', fallbackErr);
+        uiToast('Could not save tagged items to your meal plan.');
+        throw fallbackErr;
+      }
+    }
+  };
+
   const applyShoppingSelectAllSelections = async () => {
     if (!isShoppingPlannerSelectMode()) return false;
     if (!shoppingAddAllWouldChangePlan()) return false;
@@ -2168,8 +2321,8 @@
           const planKey = getBrowseVariantPlanKey(baseName, variantName, item);
           const key = String(planKey || '').trim();
           if (!key) return;
-          if (hasPositiveShoppingQty(getDirectShoppingQty(key))) return;
-          enqueueShoppingPlannerDirectQty(key, 1, {
+          if (planKeyHasBrowsePlannerSelection(key)) return;
+          const enqueued = enqueueShoppingPlannerUnspecifiedSelection(key, {
             itemName: baseName,
             variantName,
             ingredientVariantId: resolveBrowseIngredientVariantId(
@@ -2177,7 +2330,7 @@
               variantName,
             ),
           });
-          changed = true;
+          if (enqueued !== false) changed = true;
         });
       });
     });
@@ -2228,9 +2381,23 @@
     if (!ok || !selectedTagKeys || !selectedTagKeys.length) return;
     const changed = applyShoppingAddByTagSelections(selectedTagKeys);
     if (changed) {
-      await flushPlanNarrowRpcBatchIfRemote();
+      await flushPlannerSelectionsAfterBulkAddIfRemote();
     }
     syncItemsMonogramExtraButtonsState();
+  };
+
+  const refreshItemsAfterPlanClear = async () => {
+    if (shouldUseRemoteShoppingState()) {
+      await runFavoriteEatsRemoteShoppingPlanRefresh({
+        force: true,
+        source: 'clear all items',
+      });
+      return;
+    }
+    hydrateShoppingSelectionsFromPlan();
+    await refreshShoppingBrowsePlanRowsIndex();
+    await runDeferredRecipeDerivedHydrate();
+    refreshShoppingSelectionUi({ fullRerender: false });
   };
 
   const handleClearItemsFromPlan = async () => {
@@ -2255,6 +2422,9 @@
     );
     const previousShoppingQuantities = new Map(shoppingQuantities);
     const previousShoppingRecipeQuantities = new Map(shoppingRecipeQuantities);
+    const previousShoppingQuantityUnspecifiedKeys = new Set(
+      shoppingQuantityUnspecifiedKeys,
+    );
     const previousSelectedShoppingNames = new Set(selectedShoppingNames);
     const previousShoppingSelectionMeta = new Map(
       Array.from(shoppingSelectionMeta.entries(), ([key, value]) => [
@@ -2263,28 +2433,43 @@
       ]),
     );
     const restoreClearedSelections = () => {
-      persistShoppingPlan(previousPlan);
-      shoppingQuantities.clear();
-      previousShoppingQuantities.forEach((qty, key) => {
-        shoppingQuantities.set(key, qty);
-      });
-      shoppingRecipeQuantities.clear();
-      previousShoppingRecipeQuantities.forEach((qty, key) => {
-        shoppingRecipeQuantities.set(key, qty);
-      });
-      selectedShoppingNames.clear();
-      previousSelectedShoppingNames.forEach((name) => {
-        selectedShoppingNames.add(name);
-      });
-      shoppingSelectionMeta.clear();
-      previousShoppingSelectionMeta.forEach((meta, key) => {
-        shoppingSelectionMeta.set(key, cloneForUndo(meta, () => meta));
-      });
-      collapseExpandedVariantRows();
-      shoppingRowStepperController?.collapseAll?.();
-      refreshShoppingSelectionUi();
-      syncShoppingActionButtonState();
+      void (async () => {
+        persistShoppingPlan(previousPlan);
+        shoppingQuantities.clear();
+        previousShoppingQuantities.forEach((qty, key) => {
+          shoppingQuantities.set(key, qty);
+        });
+        shoppingRecipeQuantities.clear();
+        previousShoppingRecipeQuantities.forEach((qty, key) => {
+          shoppingRecipeQuantities.set(key, qty);
+        });
+        shoppingQuantityUnspecifiedKeys.clear();
+        previousShoppingQuantityUnspecifiedKeys.forEach((key) => {
+          shoppingQuantityUnspecifiedKeys.add(key);
+        });
+        selectedShoppingNames.clear();
+        previousSelectedShoppingNames.forEach((name) => {
+          selectedShoppingNames.add(name);
+        });
+        shoppingSelectionMeta.clear();
+        previousShoppingSelectionMeta.forEach((meta, key) => {
+          shoppingSelectionMeta.set(key, cloneForUndo(meta, () => meta));
+        });
+        if (
+          shouldUseRemoteShoppingState() &&
+          typeof flushCoalescedPlanSaveToDataService === 'function'
+        ) {
+          await flushCoalescedPlanSaveToDataService({ awaited: true });
+        }
+        collapseExpandedVariantRows();
+        shoppingRowStepperController?.collapseAll?.();
+        await refreshItemsAfterPlanClear();
+        syncShoppingActionButtonState();
+      })();
     };
+    if (typeof abortPlanInputSyncQueuesForWholesaleClear === 'function') {
+      await abortPlanInputSyncQueuesForWholesaleClear();
+    }
     runWithShoppingPlanMutationBatch(() => {
       clearShoppingPlanSelections({
         clearItems: true,
@@ -2298,13 +2483,10 @@
     ) {
       await flushCoalescedPlanSaveToDataService({ awaited: true });
     }
-    shoppingQuantities.clear();
-    shoppingRecipeQuantities.clear();
-    selectedShoppingNames.clear();
-    shoppingSelectionMeta.clear();
+    clearShoppingPlannerUiState();
     collapseExpandedVariantRows();
     shoppingRowStepperController?.collapseAll?.();
-    refreshShoppingSelectionUi();
+    await refreshItemsAfterPlanClear();
     syncShoppingActionButtonState();
     uiToastUndo('All shopping selections cleared.', restoreClearedSelections);
   };

@@ -53,6 +53,22 @@ assert(
 );
 
 assert(
+  screen.includes('abortPlanInputSyncQueuesForWholesaleClear') &&
+    /await abortPlanInputSyncQueuesForWholesaleClear\(\)/.test(screen) &&
+    screen.includes('clearShoppingPlannerUiState()') &&
+    screen.includes('refreshItemsAfterPlanClear'),
+  'Items clear should abort narrow queues, reset full planner UI state, and refresh from remote.',
+);
+
+assert(
+  main.includes('function abortPlanInputSyncQueuesForWholesaleClear') &&
+    /applyShoppingStateEchoFromSaveResponse\(rs, \{[\s\S]*allowEmptyPlanRemoteSave/.test(
+      main,
+    ),
+  'Empty-plan save echo should apply wholesale and abort queued narrow writes.',
+);
+
+assert(
   !quantityFlushBlock.includes('flushCoalescedPlanSaveToDataService'),
   'Routine Items quantity flush must not use the whole-plan flush helper.',
 );

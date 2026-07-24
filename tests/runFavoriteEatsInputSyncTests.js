@@ -479,6 +479,35 @@ async function testEnqueueSeedsLastLocalValue() {
   assert(state.inFlight === false, 'Enqueue does not mark key as in-flight.');
 }
 
+async function testAbortPendingForWholesaleApply() {
+  const { api } = loadModule();
+  const storage = fakeStorage();
+  const queue = api.createCoalescedOpQueue({
+    flushDelayMs: 60000,
+    storage,
+    storageKey: 'fe:test',
+    flushOp: async () => ({ ok: true, updated_at: '2026-05-24T12:00:00.000+00:00' }),
+  });
+  queue.enqueue({
+    surface: 'plan',
+    entityKey: 'milk',
+    field: 'quantity',
+    value: 0,
+    meta: { quantityUnspecified: true },
+  });
+  assert(queue.size() === 1, 'Pending op exists before abort.');
+  assert(storage.sizeOf() === 1, 'Durable mirror exists before abort.');
+  queue.abortPendingForWholesaleApply();
+  assert(queue.size() === 0, 'Abort clears pending ops.');
+  assert(storage.sizeOf() === 0, 'Abort clears durable mirror.');
+  const state = queue.getKeyState({
+    surface: 'plan',
+    entityKey: 'milk',
+    field: 'quantity',
+  });
+  assert(state.hasLocalValue === false, 'Abort clears per-key ack state.');
+}
+
 async function run() {
   await testCoalescingAndOrdering();
   await testCrossSurfaceDoesNotCoalesce();
@@ -494,6 +523,7 @@ async function run() {
   await testDurableForgetOnFlushSuccess();
   await testDurableSurvivesFlushFailure();
   await testEnqueueSeedsLastLocalValue();
+  await testAbortPendingForWholesaleApply();
   console.log('favoriteEatsInputSync tests passed.');
 }
 

@@ -171,6 +171,7 @@
           lastAppliedServerUpdatedAt: null,
           lastLocalValue: undefined,
           hasLocalValue: false,
+          lastLocalQuantityUnspecified: false,
         };
         keyState.set(key, state);
       }
@@ -270,6 +271,17 @@
       const state = getOrCreateKeyState(key);
       state.lastLocalValue = normalized.value;
       state.hasLocalValue = true;
+      if (
+        normalized.meta &&
+        typeof normalized.meta === 'object' &&
+        Object.prototype.hasOwnProperty.call(
+          normalized.meta,
+          'quantityUnspecified',
+        )
+      ) {
+        state.lastLocalQuantityUnspecified =
+          normalized.meta.quantityUnspecified === true;
+      }
       if (durableEnabled) {
         const current = safeReadDurable(storage, storageKey);
         current[key] = normalized;
@@ -387,6 +399,13 @@
         state.lastLocalValue = payload.value;
         state.hasLocalValue = true;
       }
+      if (
+        payload &&
+        Object.prototype.hasOwnProperty.call(payload, 'quantityUnspecified')
+      ) {
+        state.lastLocalQuantityUnspecified =
+          payload.quantityUnspecified === true;
+      }
       return true;
     }
 
@@ -405,6 +424,41 @@
       keyState.clear();
     }
 
+    /**
+     * Wholesale plan replace (e.g. clear all): discard pending + durable ops
+     * without flushing them, and drop per-key ack state so stale merges and
+     * boot replay cannot resurrect rows the wholesale save removed.
+     */
+    function abortPendingForWholesaleApply() {
+      pending.forEach((_, key) => clearScheduledFlush(key));
+      pending.clear();
+      if (durableEnabled) {
+        safeWriteDurable(storage, storageKey, {});
+      }
+      keyState.clear();
+    }
+
+    /** Wait until in-flight narrow RPCs settle (best-effort, bounded). */
+    async function awaitInFlightDrain(options = {}) {
+      const timeoutMs = Number.isFinite(Number(options.timeoutMs))
+        ? Math.max(0, Number(options.timeoutMs))
+        : 10000;
+      const pollMs = Number.isFinite(Number(options.pollMs))
+        ? Math.max(1, Number(options.pollMs))
+        : 16;
+      const start = Date.now();
+      while (inFlight.size > 0) {
+        if (Date.now() - start >= timeoutMs) break;
+        await new Promise((resolve) => {
+          if (typeof global.setTimeout === 'function') {
+            global.setTimeout(resolve, pollMs);
+          } else {
+            resolve();
+          }
+        });
+      }
+    }
+
     function getKeyState(keyOrOp) {
       const key =
         typeof keyOrOp === 'string' ? keyOrOp : opKey(keyOrOp || {});
@@ -415,6 +469,7 @@
           lastAppliedServerUpdatedAt: null,
           lastLocalValue: undefined,
           hasLocalValue: false,
+          lastLocalQuantityUnspecified: false,
           pending: false,
           inFlight: false,
         };
@@ -423,6 +478,7 @@
         lastAppliedServerUpdatedAt: state.lastAppliedServerUpdatedAt,
         lastLocalValue: state.lastLocalValue,
         hasLocalValue: state.hasLocalValue,
+        lastLocalQuantityUnspecified: state.lastLocalQuantityUnspecified === true,
         pending: pending.has(key),
         inFlight: inFlight.has(key),
       };
@@ -488,6 +544,8 @@
       recordEchoApplied,
       seedKeyState,
       resetKeyStateForWholesaleApply,
+      abortPendingForWholesaleApply,
+      awaitInFlightDrain,
       getKeyState,
       peekPendingKeys,
       peekInFlightKeys,

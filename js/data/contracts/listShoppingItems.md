@@ -226,7 +226,7 @@ If the tag tables do not exist, the item still comes back, but **tags** is empty
 
 ## Add by tag (Items planner)
 
-When the user adds by tag, set quantity 1 on each variant row whose own tags match **any** selected tag. Skip variants that already have quantity. The base row is included only when the base variant row carries a matching tag.
+When the user adds by tag, add a direct **unspecified** quantity (`some`) on each variant row whose own tags match **any** selected tag. Skip variants that already have a planner selection (direct count, direct `some`, or any recipe-contributed amount). The base row is included only when the base variant row carries a matching tag.
 
 ## Recipe Use Count
 

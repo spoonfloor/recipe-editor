@@ -4200,16 +4200,23 @@ function normalizeShoppingPlan(rawPlan) {
         rawEntry && typeof rawEntry === 'object' && !Array.isArray(rawEntry)
           ? rawEntry
           : {};
+      const quantityUnspecified =
+        entry.quantityUnspecified === true ||
+        entry.quantity_unspecified === true;
       const quantityRaw = Number(entry.quantity);
-      if (!Number.isFinite(quantityRaw)) return;
-      const quantity = Number(quantityRaw.toFixed(4));
-      if (Math.abs(quantity) < 1e-9) return;
+      const quantity = Number.isFinite(quantityRaw)
+        ? Number(quantityRaw.toFixed(4))
+        : 0;
+      if (!quantityUnspecified && Math.abs(quantity) < 1e-9) return;
       const nextEntry = {
         key,
         name: String(entry.name || entry.itemName || '').trim(),
         variantName: String(entry.variantName || '').trim(),
-        quantity,
+        quantity: quantityUnspecified ? 0 : quantity,
       };
+      if (quantityUnspecified) {
+        nextEntry.quantityUnspecified = true;
+      }
       const rawIv = Number(entry.ingredientVariantId);
       if (Number.isFinite(rawIv) && rawIv > 0) {
         nextEntry.ingredientVariantId = Math.trunc(rawIv);
@@ -5003,11 +5010,17 @@ function mergeRemotePlanForPerKeyStaleness(remotePlan) {
         // the incoming value differs from the value we last applied locally
         // (local absence is also a valid current value, e.g. qty reached 0).
         const incomingQty = Number(entry.quantity);
-        if (
+        const incomingUnspecified =
+          entry.quantityUnspecified === true ||
+          entry.quantity_unspecified === true;
+        const localUnspecified = state.lastLocalQuantityUnspecified === true;
+        const qtyMismatch =
           state.hasLocalValue &&
           Number.isFinite(incomingQty) &&
-          incomingQty !== state.lastLocalValue
-        ) {
+          incomingQty !== state.lastLocalValue;
+        const unspecifiedMismatch =
+          state.hasLocalValue && incomingUnspecified !== localUnspecified;
+        if (qtyMismatch || unspecifiedMismatch) {
           if (currentItems[key]) {
             merged[key] = { ...currentItems[key] };
           } else {
@@ -5239,6 +5252,9 @@ function seedShoppingPlanItemsQuantityQueueFromRemotePlan(remotePlan) {
     }
     const rawQty = Number(entry.quantity);
     const value = Number.isFinite(rawQty) ? rawQty : 0;
+    const quantityUnspecified =
+      entry.quantityUnspecified === true ||
+      entry.quantity_unspecified === true;
     try {
       queue.recordEchoApplied(
         {
@@ -5249,6 +5265,7 @@ function seedShoppingPlanItemsQuantityQueueFromRemotePlan(remotePlan) {
         {
           value,
           updated_at: updatedAt,
+          quantityUnspecified,
         },
       );
     } catch (_) {}
@@ -5739,7 +5756,9 @@ function queueSaveShoppingStateToDataService(partialState, options = {}) {
     }
     if (!remoteState || typeof remoteState !== 'object') return;
     try {
-      applyShoppingStateEchoFromSaveResponse(remoteState);
+      applyShoppingStateEchoFromSaveResponse(remoteState, {
+        wholesale: !!(options && options.allowEmptyPlanRemoteSave),
+      });
     } catch (err) {
       console.warn(
         'applyShoppingStateEchoFromSaveResponse (queued save) failed:',
@@ -5788,7 +5807,9 @@ async function awaitPersistShoppingStateToDataService(partialState, options = {}
         : await window.dataService.saveShoppingState(request, options);
     if (rs && typeof rs === 'object') {
       try {
-        applyShoppingStateEchoFromSaveResponse(rs);
+        applyShoppingStateEchoFromSaveResponse(rs, {
+          wholesale: !!(options && options.allowEmptyPlanRemoteSave),
+        });
       } catch (err) {
         console.warn(
           'applyShoppingStateEchoFromSaveResponse (awaited save) failed:',
@@ -5869,27 +5890,59 @@ function bumpShoppingStateRemoteApplyGeneration() {
   shoppingStateRemoteApplyGeneration += 1;
 }
 
-function resetInputSyncQueuesForWholesaleApply() {
+function getPlanInputSyncQueuesForWholesaleApply() {
   const queues = [
     typeof window !== 'undefined' ? window.favoriteEatsPlanItemsQuantityQueue : null,
     typeof window !== 'undefined' ? window.favoriteEatsPlanRecipeServingsQueue : null,
     typeof window !== 'undefined'
       ? window.favoriteEatsPlanRecipeRootQuantityQueue
       : null,
+    getFavoriteEatsPlanRecipeServingsQueue(),
+    getFavoriteEatsPlanRecipeRootQuantityQueue(),
+  ];
+  const seen = new Set();
+  return queues.filter((queue) => {
+    if (!queue || seen.has(queue)) return false;
+    seen.add(queue);
+    return true;
+  });
+}
+
+function resetInputSyncQueuesForWholesaleApply() {
+  const queues = [
+    ...getPlanInputSyncQueuesForWholesaleApply(),
     typeof window !== 'undefined'
       ? window.favoriteEatsShoppingListCheckboxInputQueue
       : null,
-    getFavoriteEatsPlanRecipeServingsQueue(),
-    getFavoriteEatsPlanRecipeRootQuantityQueue(),
   ];
   const seen = new Set();
   queues.forEach((queue) => {
     if (!queue || seen.has(queue)) return;
     seen.add(queue);
-    if (typeof queue.resetKeyStateForWholesaleApply === 'function') {
+    if (typeof queue.abortPendingForWholesaleApply === 'function') {
+      queue.abortPendingForWholesaleApply();
+    } else if (typeof queue.resetKeyStateForWholesaleApply === 'function') {
       queue.resetKeyStateForWholesaleApply();
     }
   });
+}
+
+/** Clear-all / wholesale replace: drop queued narrow writes before empty plan save. */
+async function abortPlanInputSyncQueuesForWholesaleClear() {
+  getPlanInputSyncQueuesForWholesaleApply().forEach((queue) => {
+    if (typeof queue.abortPendingForWholesaleApply === 'function') {
+      queue.abortPendingForWholesaleApply();
+    } else if (typeof queue.resetKeyStateForWholesaleApply === 'function') {
+      queue.resetKeyStateForWholesaleApply();
+    }
+  });
+  await Promise.all(
+    getPlanInputSyncQueuesForWholesaleApply().map((queue) =>
+      queue && typeof queue.awaitInFlightDrain === 'function'
+        ? queue.awaitInFlightDrain()
+        : Promise.resolve(),
+    ),
+  );
 }
 
 function applyShoppingStateEchoFromSaveResponse(remoteState, options = {}) {
@@ -6378,6 +6431,8 @@ function registerFavoriteEatsItemsPageBridge() {
     runWithShoppingPlanMutationBatch,
     flushCoalescedPlanSaveToDataService,
     flushPlanNarrowRpcQueuesWithSessionCommitBatch,
+    abortPlanInputSyncQueuesForWholesaleClear,
+    runFavoriteEatsRemoteShoppingPlanRefresh,
     createEmptyShoppingPlan,
     cloneForUndo,
     clearShoppingPlanSelections,
@@ -6491,6 +6546,7 @@ function registerFavoriteEatsShoppingListPageBridge() {
     clearShoppingPlanSelections,
     createEmptyShoppingPlan,
     flushCoalescedPlanSaveToDataService,
+    abortPlanInputSyncQueuesForWholesaleClear,
     runFavoriteEatsRemoteShoppingPlanRefresh,
     isControlClickRemoveGesture,
     isControlPrimaryContextMenuGesture,
@@ -10062,6 +10118,7 @@ function setShoppingPlanItemSelection({
   name = '',
   variantName = '',
   quantity = 0,
+  quantityUnspecified = false,
   ingredientVariantId: ingredientVariantIdArg = null,
 } = {}, options = {}) {
   const normalizedKey = String(key || '').trim();
@@ -10070,13 +10127,14 @@ function setShoppingPlanItemSelection({
     if (!plan.itemSelections || typeof plan.itemSelections !== 'object') {
       plan.itemSelections = {};
     }
+    const unspecified = quantityUnspecified === true;
     const nextQtyRaw = Number(quantity);
     if (!Number.isFinite(nextQtyRaw)) {
       delete plan.itemSelections[normalizedKey];
       return;
     }
     const nextQty = Number(nextQtyRaw.toFixed(4));
-    if (Math.abs(nextQty) < 1e-9) {
+    if (!unspecified && Math.abs(nextQty) < 1e-9) {
       delete plan.itemSelections[normalizedKey];
       return;
     }
@@ -10094,8 +10152,11 @@ function setShoppingPlanItemSelection({
       key: normalizedKey,
       name: String(name || '').trim(),
       variantName: String(variantName || '').trim(),
-      quantity: nextQty,
+      quantity: unspecified ? 0 : nextQty,
     };
+    if (unspecified) {
+      out.quantityUnspecified = true;
+    }
     if (ingredientVariantId) {
       out.ingredientVariantId = ingredientVariantId;
     }
@@ -11622,15 +11683,24 @@ function getShoppingPlanSelectionRows(options = {}) {
   const addSelectedItemBucket = (entry) => {
     const name = String(entry?.name || '').trim();
     const variantName = String(entry?.variantName || '').trim();
+    const quantityUnspecified = entry?.quantityUnspecified === true;
     const quantity = Number(entry?.quantity || 0);
-    if (!name || !Number.isFinite(quantity) || quantity <= 1e-9) return;
+    if (!name) return;
+    if (
+      !quantityUnspecified &&
+      (!Number.isFinite(quantity) || quantity <= 1e-9)
+    ) {
+      return;
+    }
     const row = ensureRow({ name, variantName });
     if (!row) return;
-    const bucket = {
-      key: 'selected',
-      kind: 'selected',
-      quantity,
-    };
+    const bucket = quantityUnspecified
+      ? { key: 'unspecified', kind: 'unspecified', quantity: 1 }
+      : {
+          key: 'selected',
+          kind: 'selected',
+          quantity,
+        };
     addBucketToTarget(row, bucket);
     const source = ensureContributionSource(row, {
       sourceType: 'manual',

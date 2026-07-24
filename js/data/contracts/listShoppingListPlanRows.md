@@ -60,10 +60,10 @@ Rows with no display text are skipped.
 
 Directly added items come from `selectedItems`.
 
-A directly added item is included only when:
+A directly added item is included when:
 
 - it has a non-empty name
-- its quantity is positive
+- it has a positive quantity **or** `quantityUnspecified` is true
 - the item exists and is visible in the current ingredient list
 
 Directly added item rows get one contribution source:
@@ -71,7 +71,7 @@ Directly added item rows get one contribution source:
 - **sourceType** is `manual`
 - **title** is `Directly added`
 
-The quantity is shown as a simple count.
+When `quantityUnspecified` is true, the quantity is shown as `some`. Otherwise the quantity is shown as a simple count.
 
 ## Recipe Items
 

@@ -28,6 +28,15 @@ const rpcResetMigration = fs.readFileSync(
   ),
   'utf8',
 );
+const rpcUnspecifiedMigration = fs.readFileSync(
+  path.join(
+    projectRoot,
+    'supabase',
+    'migrations',
+    '20260724143000_plan_selected_items_quantity_unspecified.sql',
+  ),
+  'utf8',
+);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -274,6 +283,18 @@ assert(
     screen.includes('ensureVariantParentHeadlineFitObserver') &&
     screen.includes('getPlannerRowLabelGroupBudgetPx(li)'),
   'Items variant-parent headlines should use canonical fit, reserve stepper column, and glue chevrons in a label group.',
+);
+
+assert(
+  rpcUnspecifiedMigration.includes('p_quantity_unspecified boolean default false') &&
+    rpcUnspecifiedMigration.includes('quantity_unspecified'),
+  'Items quantity RPC migration should support direct unspecified selections.',
+);
+
+assert(
+  screen.includes('enqueueShoppingPlannerUnspecifiedSelection') &&
+    screen.includes('setShoppingUnspecifiedSelection'),
+  'Items quantity path should enqueue direct unspecified selections separately from numeric qty.',
 );
 
 console.log('shopping plan items quantity architecture tests passed.');

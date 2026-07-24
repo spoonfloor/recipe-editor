@@ -46,6 +46,7 @@
     clearShoppingPlanSelections,
     createEmptyShoppingPlan,
     flushCoalescedPlanSaveToDataService,
+    abortPlanInputSyncQueuesForWholesaleClear,
     runFavoriteEatsRemoteShoppingPlanRefresh,
     isControlClickRemoveGesture,
     isControlPrimaryContextMenuGesture,
@@ -3441,6 +3442,9 @@
         syncShoppingListClearButtonState();
       })();
     };
+    if (typeof abortPlanInputSyncQueuesForWholesaleClear === 'function') {
+      await abortPlanInputSyncQueuesForWholesaleClear();
+    }
     runWithShoppingPlanMutationBatch(() => {
       clearShoppingPlanSelections({
         clearItems: true,

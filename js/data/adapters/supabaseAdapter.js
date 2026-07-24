@@ -3823,7 +3823,11 @@
     }
     const quantityRaw = Number(request?.quantity);
     const quantity = Number.isFinite(quantityRaw) ? quantityRaw : 0;
-    const body = { p_item_key: itemKey, p_quantity: quantity };
+    const body = {
+      p_item_key: itemKey,
+      p_quantity: quantity,
+      p_quantity_unspecified: request?.quantityUnspecified === true,
+    };
     if (request && Object.prototype.hasOwnProperty.call(request, 'name')) {
       body.p_name = request.name == null ? null : String(request.name);
     }
@@ -8565,9 +8569,17 @@
         name: trimStr(entry?.name),
         variantName: trimStr(entry?.variantName),
         quantity: Number(entry?.quantity),
+        quantityUnspecified:
+          entry?.quantityUnspecified === true ||
+          entry?.quantity_unspecified === true,
         ingredientVariantId: ingredientVariantIdFromPlanSelectionEntry(entry),
       }))
       .filter((entry) => {
+        if (entry.quantityUnspecified) {
+          if (trimStr(entry.name)) return true;
+          const iv = intOrNull(entry.ingredientVariantId);
+          return iv != null && iv > 0;
+        }
         const q = Number(entry.quantity);
         if (!Number.isFinite(q) || q <= 0) return false;
         if (trimStr(entry.name)) return true;
@@ -8630,7 +8642,9 @@
       });
       if (!row) continue;
       row.useMetric = row.useMetric || !!visible.useMetric;
-      const bucket = makePlanRowsBucket({ kind: 'selected', quantity: entry.quantity });
+      const bucket = entry.quantityUnspecified
+        ? makePlanRowsBucket({ kind: 'unspecified' })
+        : makePlanRowsBucket({ kind: 'selected', quantity: entry.quantity });
       addPlanRowsBucket(row, bucket);
       const source = ensurePlanRowsSource(row, {
         sourceType: 'manual',
