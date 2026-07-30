@@ -4302,7 +4302,7 @@ function createEmptyShoppingPlan() {
     version: 1,
     itemSelections: {},
     recipeSelections: {},
-    /** User-toggled recipes only; `recipeSelections` is merged (roots + implied linked). */
+    /** User-toggled recipes; linked subrecipes are bootstrapped as roots on parent add. `recipeSelections` mirrors roots. */
     recipeSelectionRoots: {},
     storeOrder: [],
     selectedStoreIds: [],
@@ -4914,6 +4914,7 @@ function getFavoriteEatsPlanRecipeServingsQueue() {
 // plan membership (checkbox 0/1). Local apply writes recipeSelectionRoots only;
 // flush calls catalog.set_plan_recipe_quantity.
 let favoriteEatsPlanRecipeRootQuantityQueue = null;
+let favoriteEatsPlanRecipeRootQuantityClientSeq = 0;
 
 function applyLocalPlanRecipeRootQuantity(op) {
   if (!op || op.surface !== 'plan' || op.field !== 'recipeRootQuantity') {
@@ -4924,6 +4925,7 @@ function applyLocalPlanRecipeRootQuantity(op) {
   const meta = op.meta && typeof op.meta === 'object' ? op.meta : {};
   const nextQty = Math.max(0, Math.min(99, Number(op.value || 0)));
   const isSelected = Number.isFinite(nextQty) && nextQty > 0;
+  const bootstrappedOut = [];
   setShoppingPlanRecipeRootSelection(
     {
       recipeId,
@@ -4935,11 +4937,32 @@ function applyLocalPlanRecipeRootQuantity(op) {
           : Number(meta.servingsOverride)
         : null,
     },
-    { skipRemoteSave: true },
+    { skipRemoteSave: true, bootstrappedOut },
   );
-  updateShoppingPlan((plan) => {
-    materializeShoppingPlanRecipeSelectionsFromRoots(plan, window.dbInstance);
-  }, { skipRemoteSave: true });
+  const useNarrowRpc = op.useNarrowRpc !== false;
+  const queue = getFavoriteEatsPlanRecipeRootQuantityQueue();
+  if (useNarrowRpc && queue && typeof queue.enqueue === 'function') {
+    bootstrappedOut.forEach((entry) => {
+      const linkedId = Math.trunc(Number(entry?.recipeId));
+      if (!Number.isFinite(linkedId) || linkedId <= 0) return;
+      queue.enqueue({
+        surface: 'plan',
+        entityKey: String(linkedId),
+        field: 'recipeRootQuantity',
+        value: 1,
+        previousValue: 0,
+        meta: {
+          title: String(entry?.title || '').trim(),
+          servingsOverride:
+            entry?.servingsOverride == null
+              ? null
+              : Number(entry.servingsOverride),
+        },
+        useNarrowRpc: true,
+        clientSeq: (favoriteEatsPlanRecipeRootQuantityClientSeq += 1),
+      });
+    });
+  }
 }
 
 async function sendPlanRecipeRootQuantityRpc(op) {
@@ -7600,9 +7623,6 @@ function applyFavoriteEatsPlanSelectedRecipeRootRealtimePatch(payload) {
     },
     { skipRemoteSave: true },
   );
-  updateShoppingPlan((plan) => {
-    materializeShoppingPlanRecipeSelectionsFromRoots(plan, window.dbInstance);
-  }, { skipRemoteSave: true });
   if (
     rootQueue &&
     typeof rootQueue.recordEchoApplied === 'function'
@@ -10326,7 +10346,7 @@ function getShoppingPlanItemSelections() {
     : {};
 }
 
-/** Patches merged `recipeSelections` only (e.g. implied-only rows). Servings mirror prefers roots when possible; planner toggles use `setShoppingPlanRecipeRootSelection`. */
+/** Patches merged `recipeSelections` only when a row has no root (legacy). Servings mirror prefers roots when possible; planner toggles use `setShoppingPlanRecipeRootSelection`. */
 function setShoppingPlanRecipeSelection(
   {
     recipeId,
@@ -10609,10 +10629,109 @@ function getRecipeServingsMultiplierForShoppingPlan(recipeId, recipe) {
 }
 
 /**
+ * Linked subrecipe ids reachable from `seedRecipeId` within the plan link depth cap.
+ * Used when a root is newly added to bootstrap missing linked recipes as roots.
+ */
+function collectLinkedSubrecipeIdsForBootstrap(db, seedRecipeId) {
+  const ids = [];
+  const seen = new Set();
+  const walk = (recipeId, depth, ancestors) => {
+    const rid = Math.trunc(Number(recipeId));
+    if (!Number.isFinite(rid) || rid <= 0) return;
+    if (depth >= SHOPPING_PLAN_LINKED_RECIPE_MAX_DEPTH) return;
+    const nextAncestors =
+      ancestors instanceof Set ? new Set(ancestors) : new Set();
+    if (nextAncestors.has(rid)) return;
+    const recipe = loadShoppingPlanRecipeFromDB(db, rid);
+    if (!recipe || !Array.isArray(recipe.sections)) return;
+    nextAncestors.add(rid);
+
+    recipe.sections.forEach((section) => {
+      const ingredients = Array.isArray(section?.ingredients)
+        ? section.ingredients
+        : [];
+      ingredients.forEach((line) => {
+        if (!line || line.rowType === 'heading' || !line.isRecipe) return;
+        const linkedRecipeId = Math.trunc(Number(line.linkedRecipeId));
+        if (
+          !Number.isFinite(linkedRecipeId) ||
+          linkedRecipeId <= 0 ||
+          nextAncestors.has(linkedRecipeId)
+        ) {
+          return;
+        }
+        if (!seen.has(linkedRecipeId)) {
+          seen.add(linkedRecipeId);
+          ids.push(linkedRecipeId);
+        }
+        walk(linkedRecipeId, depth + 1, nextAncestors);
+      });
+    });
+  };
+  walk(Math.trunc(Number(seedRecipeId)), 0, new Set());
+  return ids;
+}
+
+/**
+ * When a root is newly checked, add direct/transitive linked subrecipes as roots
+ * only when they are not already on the plan (zero → default; never bump servings/qty).
+ */
+function bootstrapShoppingPlanLinkedSubrecipeRoots(plan, db, parentRecipeId) {
+  if (!plan || typeof plan !== 'object') return [];
+  if (!plan.recipeSelectionRoots || typeof plan.recipeSelectionRoots !== 'object') {
+    plan.recipeSelectionRoots = {};
+  }
+  const roots = plan.recipeSelectionRoots;
+  const prevMerged =
+    plan.recipeSelections && typeof plan.recipeSelections === 'object'
+      ? plan.recipeSelections
+      : {};
+  const added = [];
+  collectLinkedSubrecipeIdsForBootstrap(db, parentRecipeId).forEach((linkedId) => {
+    const key = String(Math.trunc(linkedId));
+    const existingQty = Math.max(
+      0,
+      Math.min(99, Number(roots[key]?.quantity || 0)),
+    );
+    if (Number.isFinite(existingQty) && existingQty > 0) return;
+
+    const recipe = loadShoppingPlanRecipeFromDB(db, linkedId);
+    const title = String(recipe?.title || '').trim() || `Recipe ${linkedId}`;
+    const servings = getEffectiveChosenServingsForPlanRoot(
+      linkedId,
+      null,
+      prevMerged,
+      db,
+    );
+    const out = {
+      key,
+      recipeId: Math.trunc(linkedId),
+      title,
+      quantity: 1,
+    };
+    if (Number.isFinite(servings) && servings > 0) {
+      const ring = window.favoriteEatsRecipePlannerServings;
+      const rounded =
+        ring && typeof ring.roundValue === 'function'
+          ? ring.roundValue(Number(servings))
+          : Number(servings);
+      if (rounded != null && Number.isFinite(rounded) && rounded > 0) {
+        out.servingsOverride = rounded;
+      }
+    }
+    roots[key] = out;
+    added.push(out);
+  });
+  return added;
+}
+
+/**
  * When parent recipes are selected, sums each linked recipe's implied "make count"
  * from link rows (same depth / cycle rules as shopping walks).
  * Also records the shortest inbound link-chain depth from a root (0 = root itself)
  * so merged walks do not reset `linkDepth` and over-expand.
+ *
+ * @deprecated Plan membership now bootstraps linked recipes as roots; kept for tests.
  */
 function collectImpliedShoppingPlanLinkedRecipeAddonQuantities(
   db,
@@ -10708,11 +10827,11 @@ function collectImpliedShoppingPlanLinkedRecipeAddonQuantities(
 }
 
 /**
- * Writes `plan.recipeSelections` = user roots + linked recipes implied by those roots.
- * Preserves `servingsOverride` / titles from the previous merged map when possible.
+ * Mirrors `recipeSelectionRoots` into `recipeSelections` for shopping walks and
+ * remote persistence. Linked subrecipes are independent roots (bootstrapped on
+ * parent add); this pass does not imply or merge addon make-counts.
  */
 function materializeShoppingPlanRecipeSelectionsFromRoots(plan, db) {
-  void db;
   if (!plan || typeof plan !== 'object') return;
   if (!plan.recipeSelectionRoots || typeof plan.recipeSelectionRoots !== 'object') {
     plan.recipeSelectionRoots = {};
@@ -10722,40 +10841,17 @@ function materializeShoppingPlanRecipeSelectionsFromRoots(plan, db) {
   }
   const roots = plan.recipeSelectionRoots;
   const prevMerged = { ...plan.recipeSelections };
-  const { implied, inboundDepth, impliedRootIds } =
-    collectImpliedShoppingPlanLinkedRecipeAddonQuantities(
-      db,
-      roots,
-      prevMerged,
-    );
-  const idSet = new Set();
-  Object.keys(roots).forEach((k) => {
-    const n = Math.trunc(Number(k));
-    if (Number.isFinite(n) && n > 0) idSet.add(n);
-  });
-  implied.forEach((_v, id) => {
-    if (Number.isFinite(id) && id > 0) idSet.add(id);
-  });
-
   const nextSelections = {};
-  idSet.forEach((recipeId) => {
-    const key = String(Math.trunc(recipeId));
-    const rootEntry = roots[key];
-    const rootQty = rootEntry
-      ? Math.max(0, Math.min(99, Number(rootEntry.quantity || 0)))
-      : 0;
-    const impliedRaw = implied.get(recipeId) || 0;
-    const mergedQtyRaw = rootQty + impliedRaw;
-    const mergedQty = Math.max(
-      0,
-      Math.min(99, Number(mergedQtyRaw.toFixed(4))),
-    );
-    if (!Number.isFinite(mergedQty) || mergedQty <= 0) return;
 
+  Object.values(roots).forEach((rootEntry) => {
+    const recipeId = Math.trunc(Number(rootEntry?.recipeId));
+    const rootQty = Math.max(0, Math.min(99, Number(rootEntry?.quantity || 0)));
+    if (!Number.isFinite(recipeId) || recipeId <= 0 || rootQty <= 0) return;
+
+    const key = String(recipeId);
     const prev = prevMerged[key];
-    const titleFromRoot = String(rootEntry?.title || '').trim();
-    const titleFromPrev = String(prev?.title || '').trim();
-    let title = titleFromRoot || titleFromPrev;
+    let title = String(rootEntry?.title || '').trim();
+    if (!title) title = String(prev?.title || '').trim();
     if (!title) {
       const loaded = loadShoppingPlanRecipeFromDB(db, recipeId);
       title = String(loaded?.title || '').trim();
@@ -10764,33 +10860,27 @@ function materializeShoppingPlanRecipeSelectionsFromRoots(plan, db) {
 
     const out = {
       key,
-      recipeId: Math.trunc(recipeId),
+      recipeId,
       title,
-      quantity: mergedQty,
+      quantity: rootQty,
+      inboundLinkDepth: 0,
     };
-    const depthHint = inboundDepth.get(recipeId);
-    if (depthHint != null && Number.isFinite(depthHint) && depthHint >= 0) {
-      out.inboundLinkDepth = Math.min(
-        SHOPPING_PLAN_LINKED_RECIPE_MAX_DEPTH,
-        Math.trunc(depthHint),
-      );
-    }
-    const prevServ =
-      prev?.servingsOverride != null
-        ? Number(prev.servingsOverride)
-        : prev?.servings_override != null
-          ? Number(prev.servings_override)
-          : NaN;
+
     const rootServ =
       rootEntry?.servingsOverride != null
         ? Number(rootEntry.servingsOverride)
         : rootEntry?.servings_override != null
           ? Number(rootEntry.servings_override)
           : NaN;
+    const prevServ =
+      prev?.servingsOverride != null
+        ? Number(prev.servingsOverride)
+        : prev?.servings_override != null
+          ? Number(prev.servings_override)
+          : NaN;
     let rawServingsOv =
       Number.isFinite(rootServ) && rootServ > 0 ? rootServ : prevServ;
-
-    if (rootEntry && (!Number.isFinite(rawServingsOv) || rawServingsOv <= 0)) {
+    if (!Number.isFinite(rawServingsOv) || rawServingsOv <= 0) {
       const chosenRoot = getEffectiveChosenServingsForPlanRoot(
         recipeId,
         rootEntry,
@@ -10801,38 +10891,6 @@ function materializeShoppingPlanRecipeSelectionsFromRoots(plan, db) {
         rawServingsOv = chosenRoot;
       }
     }
-
-    if (!rootEntry && (!Number.isFinite(rawServingsOv) || rawServingsOv <= 0)) {
-      const rootsSet = impliedRootIds.get(recipeId);
-      let maxScale = 0;
-      if (rootsSet && rootsSet.size) {
-        rootsSet.forEach((rid) => {
-          const rk = String(Math.trunc(rid));
-          const scale = computeMealScaleForPlanRoot(
-            rid,
-            roots[rk],
-            prevMerged,
-            db,
-          );
-          if (scale > maxScale) maxScale = scale;
-        });
-      }
-      if (maxScale <= 0) maxScale = 1;
-      const recipeL = loadShoppingPlanRecipeFromDB(db, recipeId);
-      const defL = getRecipeDefaultServingsCountFromModel(recipeL);
-      if (recipeL && Number.isFinite(defL) && defL > 0) {
-        let y = defL * maxScale;
-        const ring = window.favoriteEatsRecipePlannerServings;
-        if (ring && typeof ring.roundValue === 'function') {
-          const rv = ring.roundValue(Number(y));
-          if (rv != null && Number.isFinite(rv) && rv > 0) y = Number(rv);
-        }
-        if (Number.isFinite(y) && y > 0) {
-          rawServingsOv = y;
-        }
-      }
-    }
-
     if (Number.isFinite(rawServingsOv) && rawServingsOv > 0) {
       const ring = window.favoriteEatsRecipePlannerServings;
       let rounded =
@@ -10885,11 +10943,17 @@ function setShoppingPlanRecipeRootSelection(
     return getShoppingPlan();
   }
   const normalizedKey = String(Math.trunc(normalizedRecipeId));
-  return updateShoppingPlan((plan) => {
+  const bootstrapOut =
+    options.bootstrappedOut && Array.isArray(options.bootstrappedOut)
+      ? options.bootstrappedOut
+      : null;
+  const db = window.dbInstance;
+  const result = updateShoppingPlan((plan) => {
     if (!plan.recipeSelectionRoots || typeof plan.recipeSelectionRoots !== 'object') {
       plan.recipeSelectionRoots = {};
     }
     const prev = plan.recipeSelectionRoots[normalizedKey];
+    const prevQty = Math.max(0, Math.min(99, Number(prev?.quantity || 0)));
     const nextQty = Math.max(0, Math.min(99, Number(quantity || 0)));
     if (!Number.isFinite(nextQty) || nextQty <= 0) {
       delete plan.recipeSelectionRoots[normalizedKey];
@@ -10898,6 +10962,7 @@ function setShoppingPlanRecipeRootSelection(
       if (plan.recipeSelections && typeof plan.recipeSelections === 'object') {
         delete plan.recipeSelections[normalizedKey];
       }
+      materializeShoppingPlanRecipeSelectionsFromRoots(plan, db);
       return;
     }
     let nextServings;
@@ -10925,7 +10990,23 @@ function setShoppingPlanRecipeRootSelection(
       }
     }
     plan.recipeSelectionRoots[normalizedKey] = out;
+    const isFreshAdd = !(Number.isFinite(prevQty) && prevQty > 0);
+    if (
+      isFreshAdd &&
+      options.bootstrapLinkedSubrecipes !== false
+    ) {
+      const added = bootstrapShoppingPlanLinkedSubrecipeRoots(
+        plan,
+        db,
+        normalizedRecipeId,
+      );
+      if (bootstrapOut) {
+        bootstrapOut.push(...added);
+      }
+    }
+    materializeShoppingPlanRecipeSelectionsFromRoots(plan, db);
   }, options);
+  return result;
 }
 
 function walkExpandedShoppingPlanIngredientLines(
@@ -10979,47 +11060,8 @@ function walkExpandedShoppingPlanIngredientLines(
     ingredients.forEach((line) => {
       if (!line || line.rowType === 'heading') return;
 
-      const linkedRecipeId = Math.trunc(Number(line.linkedRecipeId));
       if (line.isRecipe) {
-        if (
-          !Number.isFinite(linkedRecipeId) ||
-          linkedRecipeId <= 0 ||
-          normalizedLinkDepth >= SHOPPING_PLAN_LINKED_RECIPE_MAX_DEPTH ||
-          nextAncestors.has(linkedRecipeId)
-        ) {
-          return;
-        }
-
-        if (
-          skipInlineLinkedRecipeIds instanceof Set &&
-          skipInlineLinkedRecipeIds.has(linkedRecipeId)
-        ) {
-          return;
-        }
-
-        const linkedRecipe = loadShoppingPlanRecipeFromDB(db, linkedRecipeId);
-        if (!linkedRecipe || !Array.isArray(linkedRecipe.sections)) return;
-
-        const linkQuantity = getRecipeIngredientShoppingCount(line);
-        const normalizedLinkQuantity =
-          Number.isFinite(linkQuantity) && linkQuantity > 0 ? linkQuantity : 1;
-
-        walkExpandedShoppingPlanIngredientLines(
-          db,
-          linkedRecipe,
-          {
-            recipeId: linkedRecipeId,
-            recipeTitle: String(linkedRecipe?.title || '').trim(),
-            outerRecipeMultiplier:
-              normalizedOuterMultiplier *
-              servingsMultiplier *
-              normalizedLinkQuantity,
-            linkDepth: normalizedLinkDepth + 1,
-            ancestorRecipeIds: nextAncestors,
-            skipInlineLinkedRecipeIds,
-          },
-          visit,
-        );
+        // Linked subrecipe ingredients come from that recipe's own root row only.
         return;
       }
 

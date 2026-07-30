@@ -188,8 +188,11 @@ const rootLocalApplyBlock = extractFunction(main, 'applyLocalPlanRecipeRootQuant
 const rootFlushBlock = extractFunction(main, 'sendPlanRecipeRootQuantityRpc');
 assert(
   rootLocalApplyBlock.includes('setShoppingPlanRecipeRootSelection') &&
-    rootLocalApplyBlock.includes('{ skipRemoteSave: true }') &&
-    rootLocalApplyBlock.includes('materializeShoppingPlanRecipeSelectionsFromRoots') &&
+    rootLocalApplyBlock.includes('bootstrappedOut') &&
+    rootLocalApplyBlock.includes('bootstrappedOut.forEach') &&
+    main.includes('function bootstrapShoppingPlanLinkedSubrecipeRoots') &&
+    main.includes('bootstrapShoppingPlanLinkedSubrecipeRoots(') &&
+    main.includes('materializeShoppingPlanRecipeSelectionsFromRoots(plan, db)') &&
     !rootLocalApplyBlock.includes('setPlanRecipeQuantity') &&
     !rootLocalApplyBlock.includes('persistShoppingPlan') &&
     !rootFlushBlock.includes('setShoppingPlanRecipeRootSelection') &&

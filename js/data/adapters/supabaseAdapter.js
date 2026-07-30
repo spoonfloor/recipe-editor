@@ -7493,33 +7493,6 @@
           if (!line || line.rowType === 'heading') continue;
           const linkedRecipeId = Math.trunc(Number(line.linkedRecipeId));
           if (line.isRecipe) {
-            if (
-              !Number.isFinite(linkedRecipeId) ||
-              linkedRecipeId <= 0 ||
-              normalizedDepth >= SHOPPING_PLAN_LINKED_RECIPE_MAX_DEPTH ||
-              ancestors.has(linkedRecipeId)
-            ) {
-              continue;
-            }
-            if (mergedSelectedRecipeIds.has(linkedRecipeId)) {
-              continue;
-            }
-            const linkedRecipe = await loadRecipe(linkedRecipeId);
-            if (!linkedRecipe || !Array.isArray(linkedRecipe.sections)) continue;
-            const linkQty = getRecipeIngredientShoppingQuantity(line);
-            const multiplier =
-              Number.isFinite(linkQty) && linkQty > 0 ? linkQty : 1;
-            await walkRecipe(
-              linkedRecipe,
-              {
-                recipeId: linkedRecipeId,
-                multiplier: normalizedMultiplier * servingsMultiplier * multiplier,
-                depth: normalizedDepth + 1,
-                ancestors,
-                servings: null,
-              },
-              visit,
-            );
             continue;
           }
           visit(line, {
@@ -8701,34 +8674,6 @@
           if (!line || line.rowType === 'heading') continue;
           const linkedRecipeId = Math.trunc(Number(line.linkedRecipeId));
           if (line.isRecipe) {
-            if (
-              !Number.isFinite(linkedRecipeId) ||
-              linkedRecipeId <= 0 ||
-              depth >= SHOPPING_PLAN_LINKED_RECIPE_MAX_DEPTH ||
-              ancestors.has(linkedRecipeId)
-            ) {
-              continue;
-            }
-            if (mergedSelectedRecipeIds.has(linkedRecipeId)) {
-              continue;
-            }
-            const linkedRecipe = await loadRecipe(linkedRecipeId);
-            if (!linkedRecipe || !Array.isArray(linkedRecipe.sections)) continue;
-            const linkQty = planRowsRecipeQuantity(line);
-            await walkRecipe(linkedRecipe, {
-              recipeId: linkedRecipeId,
-              title:
-                trimStr(linkedRecipe.title) ||
-                trimStr(line.linkedRecipeTitle) ||
-                `Recipe ${linkedRecipeId}`,
-              multiplier:
-                multiplier *
-                servingsMultiplier *
-                (Number.isFinite(linkQty) && linkQty > 0 ? linkQty : 1),
-              depth: depth + 1,
-              ancestors,
-              servings: null,
-            });
             continue;
           }
 

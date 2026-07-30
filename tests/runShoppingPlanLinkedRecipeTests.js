@@ -224,13 +224,13 @@ function runNestedLinkedRecipeTest() {
   assertJsonEqual(
     sortedEntries(derivedRows, (row) => [row.key, row.quantity]),
     [
-      ['garlic', 24],
+      ['garlic', 2],
       ['onion', 4],
-      ['salt', 48],
+      ['salt', 1],
     ],
-    'derived rows should include linked recipe ingredients through depth two and stop before depth three'
+    'bootstrapped linked roots contribute independently (no stacked inline expansion)'
   );
-  assert(!derivedRows.has('pepper'), 'derived rows should exclude linked recipes beyond depth two');
+  assert(!derivedRows.has('pepper'), 'bootstrap depth cap should exclude spice mix beyond depth two');
 
   const selectionRows = rowMap(context.getShoppingPlanSelectionRows({ db: { exec() { return []; } } }));
   assertJsonEqual(
@@ -243,13 +243,13 @@ function runNestedLinkedRecipeTest() {
       })),
     ]),
     [
-      ['garlic', '24', [{ title: 'Sauce', detailText: '24' }]],
+      ['garlic', '2', [{ title: 'Sauce', detailText: '2' }]],
       ['onion', '4', [{ title: 'Root', detailText: '4' }]],
-      ['salt', '48', [{ title: 'Stock', detailText: '48' }]],
+      ['salt', '1', [{ title: 'Stock', detailText: '1' }]],
     ],
-    'selection rows should attribute nested ingredient contributions to the recipe where each ingredient lives'
+    'selection rows attribute bootstrapped root contributions independently'
   );
-  assert(!selectionRows.has('pepper'), 'selection rows should exclude linked recipes beyond depth two');
+  assert(!selectionRows.has('pepper'), 'selection rows should exclude bootstrap depth overflow');
 }
 
 function runCycleGuardTest() {
@@ -294,9 +294,9 @@ function runCycleGuardTest() {
     sortedEntries(derivedRows, (row) => [row.key, row.quantity]),
     [
       ['shallot', 1],
-      ['thyme', 2],
+      ['thyme', 1],
     ],
-    'cycle guard should prevent revisiting ancestor recipes through linked recipe chains'
+    'cycle guard should still bootstrap the direct linked child as its own root'
   );
 }
 
@@ -374,9 +374,14 @@ function runLinkedRecipeMaterializedAsPlanRowTest() {
     quantity: 1,
   });
   const merged = context.getShoppingPlanRecipeSelections();
+  const roots = context.getShoppingPlanRecipeSelectionRoots();
   assert(
     merged['100'] && Number(merged['100'].quantity) > 0,
     'linked recipe foo should appear in merged recipeSelections',
+  );
+  assert(
+    roots['100'] && Number(roots['100'].quantity) > 0,
+    'linked recipe foo should be bootstrapped as a plan root',
   );
   const derived = rowMap(
     context.getRecipeDerivedShoppingPlanRows({ db: { exec() { return []; } } }),
@@ -464,18 +469,121 @@ function runNormalizeMaterializeFixtureTest() {
         inboundLinkDepth: 0,
         servingsOverride: 3,
       },
-      '100': {
-        key: '100',
-        recipeId: 100,
-        title: 'foo',
-        quantity: 1,
-        inboundLinkDepth: 1,
-        servingsOverride: 7,
-      },
     },
   };
 
   assertJsonEqual(planShape(explicit), expected, 'fixture JSON shape after normalize+materialize');
+}
+
+function runLinkedSubrecipeBootstrapLifecycleTest() {
+  const recipes = {
+    10: {
+      id: 10,
+      title: 'Meatball Subs',
+      servings: { default: 4 },
+      sections: [
+        {
+          ingredients: [
+            { name: 'roll', quantity: 1 },
+            { isRecipe: true, linkedRecipeId: 20, quantity: 1 },
+          ],
+        },
+      ],
+    },
+    20: {
+      id: 20,
+      title: 'Waldorf Salad',
+      servings: { default: 4 },
+      sections: [{ ingredients: [{ name: 'apple', quantity: 2 }] }],
+    },
+  };
+
+  const context = loadShoppingPlanFunctions({ recipes });
+
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 1,
+  });
+  let plan = context.getShoppingPlan();
+  assert(
+    plan.recipeSelectionRoots['20'] &&
+      Number(plan.recipeSelectionRoots['20'].quantity) === 1,
+    'adding parent should bootstrap linked subrecipe as a checked root',
+  );
+
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 20,
+    title: 'Waldorf Salad',
+    quantity: 0,
+  });
+  plan = context.getShoppingPlan();
+  assert(!plan.recipeSelectionRoots['20'], 'unchecking subrecipe removes its root');
+  assert(
+    plan.recipeSelectionRoots['10'],
+    'unchecking subrecipe leaves parent root intact',
+  );
+
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 0,
+  });
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 1,
+    servingsOverride: 8,
+  });
+  plan = context.getShoppingPlan();
+  assert(
+    plan.recipeSelectionRoots['20'] &&
+      Number(plan.recipeSelectionRoots['20'].quantity) === 1,
+    're-adding parent after opt-out should bootstrap subrecipe again (no remembered no-thanks)',
+  );
+
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 0,
+  });
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 20,
+    title: 'Waldorf Salad',
+    quantity: 1,
+    servingsOverride: 999,
+  });
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 1,
+  });
+  plan = context.getShoppingPlan();
+  assert(
+    Number(plan.recipeSelectionRoots['20'].servingsOverride) === 999,
+    're-adding parent must not bump subrecipe servings when subrecipe stayed on plan',
+  );
+
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 0,
+  });
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 20,
+    title: 'Waldorf Salad',
+    quantity: 0,
+  });
+  context.setShoppingPlanRecipeRootSelection({
+    recipeId: 10,
+    title: 'Meatball Subs',
+    quantity: 1,
+  });
+  plan = context.getShoppingPlan();
+  assert(
+    Number(plan.recipeSelectionRoots['20'].servingsOverride) === 4,
+    're-adding parent after subrecipe removal should bootstrap subrecipe at default servings',
+  );
 }
 
 function runLastRootRemoveClearsSelectionsTest() {
@@ -525,6 +633,7 @@ function run() {
   runHiddenAlternateIngredientSelectionTest();
   runLinkedRecipeMaterializedAsPlanRowTest();
   runNormalizeMaterializeFixtureTest();
+  runLinkedSubrecipeBootstrapLifecycleTest();
   runLastRootRemoveClearsSelectionsTest();
   console.log('Shopping plan linked recipe tests passed.');
 }
