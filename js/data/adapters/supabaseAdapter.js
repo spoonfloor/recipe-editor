@@ -8642,15 +8642,24 @@
       });
       if (!row) continue;
       row.useMetric = row.useMetric || !!visible.useMetric;
-      const bucket = entry.quantityUnspecified
-        ? makePlanRowsBucket({ kind: 'unspecified' })
-        : makePlanRowsBucket({ kind: 'selected', quantity: entry.quantity });
-      addPlanRowsBucket(row, bucket);
       const source = ensurePlanRowsSource(row, {
         sourceType: 'manual',
         title: 'Directly added',
       });
-      addPlanRowsBucket(source, bucket);
+      if (entry.quantityUnspecified) {
+        const someBucket = makePlanRowsBucket({ kind: 'unspecified' });
+        addPlanRowsBucket(row, someBucket);
+        addPlanRowsBucket(source, someBucket);
+      }
+      const directQty = Number(entry.quantity);
+      if (Number.isFinite(directQty) && directQty > 1e-9) {
+        const selectedBucket = makePlanRowsBucket({
+          kind: 'selected',
+          quantity: directQty,
+        });
+        addPlanRowsBucket(row, selectedBucket);
+        addPlanRowsBucket(source, selectedBucket);
+      }
     }
 
     const recipeCache = new Map();

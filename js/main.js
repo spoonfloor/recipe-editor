@@ -2088,7 +2088,7 @@ function getShoppingListTailDisplayBuckets(buckets) {
 
 function buildShoppingListDisplayMergeBuckets(
   buckets,
-  { keepPlainStepSeparate = false } = {},
+  { keepPlainStepSeparate = true } = {},
 ) {
   const list = Array.isArray(buckets)
     ? buckets.filter((bucket) => bucket && typeof bucket === 'object')
@@ -2208,7 +2208,7 @@ function formatShoppingListDisplayDetailText({
   variantName = '',
   buckets = [],
   useMetric = false,
-  keepPlainStepSeparate = false,
+  keepPlainStepSeparate = true,
 } = {}) {
   const displayFields = getShoppingListDisplayFields('', variantName);
   const mergedBuckets = buildShoppingListDisplayMergeBuckets(buckets, {
@@ -4364,7 +4364,7 @@ function normalizeShoppingPlan(rawPlan) {
         key,
         name: String(entry.name || entry.itemName || '').trim(),
         variantName: String(entry.variantName || '').trim(),
-        quantity: quantityUnspecified ? 0 : quantity,
+        quantity: Math.abs(quantity) < 1e-9 ? 0 : quantity,
       };
       if (quantityUnspecified) {
         nextEntry.quantityUnspecified = true;
@@ -10307,7 +10307,7 @@ function setShoppingPlanItemSelection({
       key: normalizedKey,
       name: String(name || '').trim(),
       variantName: String(variantName || '').trim(),
-      quantity: unspecified ? 0 : nextQty,
+      quantity: Math.abs(nextQty) < 1e-9 ? 0 : nextQty,
     };
     if (unspecified) {
       out.quantityUnspecified = true;
@@ -11849,19 +11849,28 @@ function getShoppingPlanSelectionRows(options = {}) {
     }
     const row = ensureRow({ name, variantName });
     if (!row) return;
-    const bucket = quantityUnspecified
-      ? { key: 'unspecified', kind: 'unspecified', quantity: 1 }
-      : {
-          key: 'selected',
-          kind: 'selected',
-          quantity,
-        };
-    addBucketToTarget(row, bucket);
     const source = ensureContributionSource(row, {
       sourceType: 'manual',
       title: 'Directly added',
     });
-    addBucketToTarget(source, bucket);
+    if (quantityUnspecified) {
+      const someBucket = {
+        key: 'unspecified',
+        kind: 'unspecified',
+        quantity: 1,
+      };
+      addBucketToTarget(row, someBucket);
+      addBucketToTarget(source, someBucket);
+    }
+    if (Number.isFinite(quantity) && quantity > 1e-9) {
+      const selectedBucket = {
+        key: 'selected',
+        kind: 'selected',
+        quantity,
+      };
+      addBucketToTarget(row, selectedBucket);
+      addBucketToTarget(source, selectedBucket);
+    }
   };
   const addRecipeIngredientBucket = (
     line,

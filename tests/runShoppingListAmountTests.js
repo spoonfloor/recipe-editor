@@ -410,12 +410,35 @@ function run() {
           kind: 'measured',
           unit: 'cup',
           family: 'volume',
-          baseQuantity: 2 * 236.5882365,
+          baseQuantity: 3 * 236.5882365,
         },
       ],
     }),
-    'flour (3 cups)',
-    'selected plain count merges into a lone measured tail'
+    'flour (1 + 3 cups)',
+    'selected plain count stays separate from a lone measured recipe tail'
+  );
+
+  assertEqual(
+    helpers.formatShoppingListDisplayRow({
+      name: 'alicorn_c',
+      buckets: [
+        { key: 'selected', kind: 'selected', quantity: 1 },
+        { key: 'unspecified', kind: 'unspecified', quantity: 1 },
+      ],
+    }),
+    'alicorn_c (1 + some)',
+    'direct numeric count composes with direct unspecified (add-by-tag some)'
+  );
+
+  assertEqual(
+    helpers.formatShoppingBrowsePlannerDisplayDetailText({
+      buckets: [
+        { key: 'selected', kind: 'selected', quantity: 1 },
+        { key: 'unspecified', kind: 'unspecified', quantity: 1 },
+      ],
+    }),
+    '1 + some',
+    'items browse shows direct count plus direct some'
   );
 
   assertEqual(

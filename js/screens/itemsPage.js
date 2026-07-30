@@ -633,16 +633,35 @@
     const directQty = Number((desiredQty - recipeQty).toFixed(4));
     if (Math.abs(directQty) < SHOPPING_QTY_EPSILON) {
       shoppingQuantities.delete(normalizedKey);
-      shoppingQuantityUnspecifiedKeys.delete(normalizedKey);
-      selectedShoppingNames.delete(normalizedKey);
-      shoppingSelectionMeta.delete(normalizedKey);
-      setShoppingPlanItemSelection(
-        { key: normalizedKey, quantity: 0 },
-        options,
-      );
+      if (shoppingQuantityUnspecifiedKeys.has(normalizedKey)) {
+        selectedShoppingNames.add(normalizedKey);
+        const persistedMeta = shoppingSelectionMeta.get(normalizedKey) || {};
+        setShoppingPlanItemSelection(
+          {
+            key: normalizedKey,
+            name: persistedMeta.itemName || itemName || normalizedKey,
+            variantName: persistedMeta.variantName || variantName,
+            quantity: 0,
+            quantityUnspecified: true,
+            ingredientVariantId: ingredientVariantIdFromMeta,
+          },
+          options,
+        );
+      } else {
+        shoppingQuantityUnspecifiedKeys.delete(normalizedKey);
+        selectedShoppingNames.delete(normalizedKey);
+        shoppingSelectionMeta.delete(normalizedKey);
+        setShoppingPlanItemSelection(
+          { key: normalizedKey, quantity: 0 },
+          options,
+        );
+      }
     } else {
+      const keepUnspecified = shoppingQuantityUnspecifiedKeys.has(normalizedKey);
       shoppingQuantities.set(normalizedKey, directQty);
-      shoppingQuantityUnspecifiedKeys.delete(normalizedKey);
+      if (keepUnspecified) {
+        shoppingQuantityUnspecifiedKeys.add(normalizedKey);
+      }
       selectedShoppingNames.add(normalizedKey);
       const persistedMeta = shoppingSelectionMeta.get(normalizedKey) || {};
       setShoppingPlanItemSelection(
@@ -651,6 +670,7 @@
           name: persistedMeta.itemName || itemName || normalizedKey,
           variantName: persistedMeta.variantName || variantName,
           quantity: directQty,
+          quantityUnspecified: keepUnspecified,
           ingredientVariantId: ingredientVariantIdFromMeta,
         },
         options,
@@ -710,17 +730,20 @@
       };
       if (quantityUnspecified) {
         shoppingQuantityUnspecifiedKeys.add(key);
-        selectedShoppingNames.add(key);
-        shoppingSelectionMeta.set(key, meta);
-        return;
       }
       if (
-        !Number.isFinite(quantity) ||
-        Math.abs(quantity) < SHOPPING_QTY_EPSILON
+        Number.isFinite(quantity) &&
+        Math.abs(quantity) >= SHOPPING_QTY_EPSILON
+      ) {
+        shoppingQuantities.set(key, quantity);
+      }
+      if (
+        !quantityUnspecified &&
+        (!Number.isFinite(quantity) ||
+          Math.abs(quantity) < SHOPPING_QTY_EPSILON)
       ) {
         return;
       }
-      shoppingQuantities.set(key, quantity);
       selectedShoppingNames.add(key);
       shoppingSelectionMeta.set(key, meta);
     });
@@ -969,10 +992,21 @@
     );
     const direct = getDirectShoppingQty(planKey);
     if (direct > SHOPPING_QTY_EPSILON) {
-      return [
+      const buckets = [
         { key: 'selected', kind: 'selected', quantity: direct },
         ...tails.map((bucket) => ({ ...bucket })),
       ];
+      if (
+        planKeyHasDirectUnspecifiedSelection(key) &&
+        !tails.some((bucket) => bucket && bucket.kind === 'unspecified')
+      ) {
+        buckets.splice(1, 0, {
+          key: 'unspecified',
+          kind: 'unspecified',
+          quantity: 1,
+        });
+      }
+      return buckets;
     }
     if (planKeyHasDirectUnspecifiedSelection(key)) {
       const hasUnspecifiedTail = tails.some(
@@ -1200,7 +1234,10 @@
       request.ingredientVariantId =
         Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
     }
-    if (meta.quantityUnspecified === true) {
+    if (
+      meta.quantityUnspecified === true ||
+      shoppingQuantityUnspecifiedKeys.has(itemKey)
+    ) {
       request.quantityUnspecified = true;
     }
     const result = await window.dataService.setPlanItemQuantity(request);
@@ -1305,6 +1342,9 @@
       ingredientVariantId:
         Number.isFinite(rawIv) && rawIv > 0 ? Math.trunc(rawIv) : null,
     };
+    if (quantityUnspecified) {
+      shoppingQuantityUnspecifiedKeys.add(itemKey);
+    }
     if (quantityUnspecified && nextDirect <= SHOPPING_QTY_EPSILON) {
       setShoppingUnspecifiedSelection(itemKey, meta, {
         skipRemoteSave: true,
@@ -1327,8 +1367,7 @@
       shoppingPlannerQtyInputQueue.recordEchoApplied(opLike, {
         updated_at: updatedAt,
         value: nextDirect,
-        quantityUnspecified:
-          quantityUnspecified && nextDirect <= SHOPPING_QTY_EPSILON,
+        quantityUnspecified,
       });
     }
     // Items list is only visible in planner-select mode; the DOM refresh is
@@ -1357,15 +1396,22 @@
       value,
       clientSeq: shoppingBrowsePlannerInputSeq + 1,
     });
+    const nextMeta =
+      meta && typeof meta === 'object' && !Array.isArray(meta)
+        ? { ...meta }
+        : {};
+    if (
+      shoppingQuantityUnspecifiedKeys.has(normalizedKey) &&
+      nextMeta.quantityUnspecified !== false
+    ) {
+      nextMeta.quantityUnspecified = true;
+    }
     return shoppingPlannerQtyInputQueue.enqueue({
       surface: 'plan',
       entityKey: normalizedKey,
       field: 'quantity',
       value,
-      meta:
-        meta && typeof meta === 'object' && !Array.isArray(meta)
-          ? { ...meta }
-          : {},
+      meta: nextMeta,
       clientSeq: (shoppingBrowsePlannerInputSeq += 1),
     });
   };

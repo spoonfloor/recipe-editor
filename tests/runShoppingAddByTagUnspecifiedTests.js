@@ -54,7 +54,7 @@ assert(
 );
 
 assert(
-  main.includes("kind: 'unspecified', quantity: 1") &&
+  /kind: 'unspecified'[\s\S]*quantity: 1/.test(main) &&
     /addSelectedItemBucket[\s\S]*quantityUnspecified/.test(main),
   'Local plan-row builder should render direct unspecified selections as some.',
 );
