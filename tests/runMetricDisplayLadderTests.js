@@ -11,10 +11,12 @@ const quantityDisplayPolicyPath = path.join(
   'js',
   'quantityDisplayPolicy.js',
 );
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function loadPolicy() {
   const context = { window: {}, console };
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   vm.runInContext(fs.readFileSync(quantityDisplayPolicyPath, 'utf8'), context, {
     filename: 'quantityDisplayPolicy.js',
   });

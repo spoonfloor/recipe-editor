@@ -87,88 +87,27 @@
     };
   }
 
-  /** Same factors as shopping-list helpers in main.js (US cup, mass oz, etc.). */
-  const MEASURED_INGREDIENT_UNIT_META = Object.freeze({
-    tsp: Object.freeze({ family: 'volume', factorToMl: 4.92892159375 }),
-    tbsp: Object.freeze({ family: 'volume', factorToMl: 14.78676478125 }),
-    cup: Object.freeze({ family: 'volume', factorToMl: 236.5882365 }),
-    'fl oz': Object.freeze({ family: 'volume', factorToMl: 29.5735295625 }),
-    pt: Object.freeze({ family: 'volume', factorToMl: 473.176473 }),
-    qt: Object.freeze({ family: 'volume', factorToMl: 946.352946 }),
-    gal: Object.freeze({ family: 'volume', factorToMl: 3785.411784 }),
-    ml: Object.freeze({ family: 'volume', factorToMl: 1 }),
-    l: Object.freeze({ family: 'volume', factorToMl: 1000 }),
-    g: Object.freeze({ family: 'mass', factorToG: 1 }),
-    kg: Object.freeze({ family: 'mass', factorToG: 1000 }),
-    oz: Object.freeze({ family: 'mass', factorToG: 28.349523125 }),
-    lb: Object.freeze({ family: 'mass', factorToG: 453.59237 }),
-  });
-
-  const MEASURED_INGREDIENT_UNIT_ALIASES = Object.freeze({
-    t: 'tsp',
-    tsp: 'tsp',
-    teaspoon: 'tsp',
-    teaspoons: 'tsp',
-    tb: 'tbsp',
-    tbl: 'tbsp',
-    tbspn: 'tbsp',
-    tbs: 'tbsp',
-    tbsp: 'tbsp',
-    tablespoon: 'tbsp',
-    tablespoons: 'tbsp',
-    c: 'cup',
-    cup: 'cup',
-    cups: 'cup',
-    floz: 'fl oz',
-    'fl oz': 'fl oz',
-    'fluid ounce': 'fl oz',
-    'fluid ounces': 'fl oz',
-    fluidounce: 'fl oz',
-    fluidounces: 'fl oz',
-    pt: 'pt',
-    pint: 'pt',
-    pints: 'pt',
-    qt: 'qt',
-    quart: 'qt',
-    quarts: 'qt',
-    gal: 'gal',
-    gallon: 'gal',
-    gallons: 'gal',
-    ml: 'ml',
-    milliliter: 'ml',
-    milliliters: 'ml',
-    l: 'l',
-    liter: 'l',
-    liters: 'l',
-    g: 'g',
-    gram: 'g',
-    grams: 'g',
-    kg: 'kg',
-    kilogram: 'kg',
-    kilograms: 'kg',
-    oz: 'oz',
-    ounce: 'oz',
-    ounces: 'oz',
-    lb: 'lb',
-    lbs: 'lb',
-    pound: 'lb',
-    pounds: 'lb',
-  });
+  function measuredUnitRegistry() {
+    return typeof window !== 'undefined' ? window.favoriteEatsMeasuredUnitRegistry : null;
+  }
 
   function normalizeMeasuredIngredientUnit(unitText) {
-    const raw = String(unitText || '')
-      .trim()
-      .toLowerCase()
-      .replace(/\./g, '')
-      .replace(/\s+/g, ' ');
-    if (!raw) return '';
-    if (Object.prototype.hasOwnProperty.call(MEASURED_INGREDIENT_UNIT_ALIASES, raw)) {
-      return MEASURED_INGREDIENT_UNIT_ALIASES[raw];
+    const reg = measuredUnitRegistry();
+    if (reg && typeof reg.normalizeMeasuredUnit === 'function') {
+      return reg.normalizeMeasuredUnit(unitText);
     }
-    if (raw.endsWith('ies') && raw.length > 3) return `${raw.slice(0, -3)}y`;
-    if (/(ches|shes|xes|zes|ses)$/.test(raw)) return raw.slice(0, -2);
-    if (raw.endsWith('s') && !raw.endsWith('ss')) return raw.slice(0, -1);
-    return raw;
+    return String(unitText || '').trim();
+  }
+
+  function measuredIngredientMetaForCanonical(canonical) {
+    const reg = measuredUnitRegistry();
+    if (!reg || typeof reg.getMeasuredUnitMetaByCanonical !== 'function') return null;
+    const meta = reg.getMeasuredUnitMetaByCanonical(canonical);
+    if (!meta) return null;
+    if (meta.family === 'mass') {
+      return { family: 'mass', factorToG: meta.factor };
+    }
+    return { family: 'volume', factorToMl: meta.factor };
   }
 
   /**
@@ -179,7 +118,7 @@
     const numeric = Number(quantity);
     const canonical = normalizeMeasuredIngredientUnit(unitText);
     if (!canonical || !Number.isFinite(numeric) || numeric <= 0) return null;
-    const meta = MEASURED_INGREDIENT_UNIT_META[canonical];
+    const meta = measuredIngredientMetaForCanonical(canonical);
     if (!meta) return null;
     if (meta.family === 'mass') {
       return {

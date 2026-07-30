@@ -6,6 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const projectRoot = path.resolve(__dirname, '..');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function assertEqual(actual, expected, message) {
   if (actual !== expected) {
@@ -25,6 +26,7 @@ function assertNoTwelfthSlashDisplay(s, message) {
 function run() {
   const context = { window: {}, console };
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   const unitPath = path.join(projectRoot, 'js', 'unitQuantityFormat.js');
   const ladderPath = path.join(projectRoot, 'js', 'cookingVolumeLadder.js');
   const policyPath = path.join(projectRoot, 'js', 'quantityDisplayPolicy.js');

@@ -12,6 +12,7 @@ const unitQuantityFormatPath = path.join(projectRoot, 'js', 'unitQuantityFormat.
 const favoriteEatsAmountKitPath = path.join(projectRoot, 'js', 'favoriteEatsAmountKit.js');
 const cookingVolumeLadderPath = path.join(projectRoot, 'js', 'cookingVolumeLadder.js');
 const quantityDisplayPolicyPath = path.join(projectRoot, 'js', 'quantityDisplayPolicy.js');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function extractSnippet(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -47,6 +48,7 @@ function loadHelpers() {
   };
 
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   vm.runInContext(decimalSnippet, context, { filename: 'utils.decimal-display.js' });
   vm.runInContext(grammarSnippet, context, { filename: 'utils.ingredient-grammar.js' });
 

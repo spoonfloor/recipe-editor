@@ -20,6 +20,7 @@ const recipeIngredientAmountModelPath = path.join(
 const planRecipeCachePath = path.join(projectRoot, 'js', 'favoriteEatsPlanRecipeCache.js');
 const mainPath = path.join(projectRoot, 'js', 'main.js');
 const adapterPath = path.join(projectRoot, 'js', 'data', 'adapters', 'supabaseAdapter.js');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function extractSnippet(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -311,6 +312,7 @@ function createContext() {
   context.window = context;
 
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   vm.runInContext(decimalSnippet, context, { filename: 'utils.decimal-display.js' });
   vm.runInContext(grammarSnippet, context, { filename: 'utils.ingredient-grammar.js' });
   vm.runInContext(ingredientDisplaySource, context, { filename: 'ingredientDisplay.js' });

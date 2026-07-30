@@ -464,7 +464,13 @@
     const rawUnit = String(unitText || '').trim();
     if (!rawUnit) return '';
 
-    const codeLower = rawUnit.toLowerCase();
+    const reg =
+      root.favoriteEatsMeasuredUnitRegistry &&
+      typeof root.favoriteEatsMeasuredUnitRegistry.normalizeMeasuredUnit === 'function'
+        ? root.favoriteEatsMeasuredUnitRegistry
+        : null;
+    const canonicalUnit = reg ? reg.normalizeMeasuredUnit(rawUnit) : rawUnit;
+    const codeLower = canonicalUnit.toLowerCase();
     const meta = resolveUnitMeta(codeLower);
 
     const unit = String(

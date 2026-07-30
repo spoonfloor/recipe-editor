@@ -8073,45 +8073,26 @@
   // Product invariant: catalog ingredients marked hidden or removed must never appear on the
   // Shopping List checklist. Direct selections use visibleItems; recipe lines use catalogByNameLc.
 
-  const SHOPPING_LIST_MEASURED_UNIT_META = Object.freeze({
-    tsp: { family: 'volume', baseUnit: 'ml', factor: 4.92892159375 },
-    tbsp: { family: 'volume', baseUnit: 'ml', factor: 14.78676478125 },
-    cup: { family: 'volume', baseUnit: 'ml', factor: 236.5882365 },
-    'fl oz': { family: 'volume', baseUnit: 'ml', factor: 29.5735295625 },
-    pt: { family: 'volume', baseUnit: 'ml', factor: 473.176473 },
-    qt: { family: 'volume', baseUnit: 'ml', factor: 946.352946 },
-    gal: { family: 'volume', baseUnit: 'ml', factor: 3785.411784 },
-    ml: { family: 'volume', baseUnit: 'ml', factor: 1 },
-    l: { family: 'volume', baseUnit: 'ml', factor: 1000 },
-    g: { family: 'mass', baseUnit: 'g', factor: 1 },
-    kg: { family: 'mass', baseUnit: 'g', factor: 1000 },
-    oz: { family: 'mass', baseUnit: 'g', factor: 28.349523125 },
-    lb: { family: 'mass', baseUnit: 'g', factor: 453.59237 },
-  });
-
-  const SHOPPING_LIST_UNIT_ALIASES = Object.freeze({
-    teaspoon: 'tsp',
-    teaspoons: 'tsp',
-    tablespoon: 'tbsp',
-    tablespoons: 'tbsp',
-    c: 'cup',
-    cups: 'cup',
-    ounce: 'oz',
-    ounces: 'oz',
-    pound: 'lb',
-    pounds: 'lb',
-  });
+  function measuredUnitRegistry() {
+    return typeof globalThis !== 'undefined'
+      ? globalThis.favoriteEatsMeasuredUnitRegistry
+      : null;
+  }
 
   function normalizePlanRowsUnit(unitText) {
-    const raw = trimStr(unitText).toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
-    if (!raw) return '';
-    if (Object.prototype.hasOwnProperty.call(SHOPPING_LIST_UNIT_ALIASES, raw)) {
-      return SHOPPING_LIST_UNIT_ALIASES[raw];
+    const reg = measuredUnitRegistry();
+    if (reg && typeof reg.normalizeMeasuredUnit === 'function') {
+      return reg.normalizeMeasuredUnit(unitText);
     }
-    if (raw.endsWith('ies') && raw.length > 3) return `${raw.slice(0, -3)}y`;
-    if (/(ches|shes|xes|zes|ses)$/.test(raw)) return raw.slice(0, -2);
-    if (raw.endsWith('s') && !raw.endsWith('ss')) return raw.slice(0, -1);
-    return raw;
+    return trimStr(unitText);
+  }
+
+  function planRowsMeasuredMetaByCanonical(canonical) {
+    const reg = measuredUnitRegistry();
+    if (!reg || typeof reg.getMeasuredUnitMetaByCanonical !== 'function') {
+      return null;
+    }
+    return reg.getMeasuredUnitMetaByCanonical(trimStr(canonical));
   }
 
   function formatPlanRowsQuantity(value) {
@@ -8162,7 +8143,7 @@
     if (kind === 'selected') {
       return { key: 'selected', kind: 'selected', quantity: q };
     }
-    const measuredMeta = SHOPPING_LIST_MEASURED_UNIT_META[normalizedUnit];
+    const measuredMeta = planRowsMeasuredMetaByCanonical(normalizedUnit);
     if (measuredMeta) {
       return {
         key: `measured:${normalizedUnit}`,
@@ -8231,25 +8212,34 @@
       return null;
     }
     if (family === 'mass') {
-      const lb = numeric / SHOPPING_LIST_MEASURED_UNIT_META.lb.factor;
+      const lbMeta = planRowsMeasuredMetaByCanonical('lb');
+      const ozMeta = planRowsMeasuredMetaByCanonical('oz');
+      if (!lbMeta || !ozMeta) return null;
+      const lb = numeric / lbMeta.factor;
       if (lb < 1) {
         return {
-          quantity: Math.max(1, Math.ceil(numeric / SHOPPING_LIST_MEASURED_UNIT_META.oz.factor)),
+          quantity: Math.max(1, Math.ceil(numeric / ozMeta.factor)),
           unit: 'oz',
         };
       }
       return { quantity: Math.ceil(lb * 2) / 2, unit: 'lb' };
     }
     if (family === 'volume') {
-      const cups = numeric / SHOPPING_LIST_MEASURED_UNIT_META.cup.factor;
-      const gallons = numeric / SHOPPING_LIST_MEASURED_UNIT_META.gal.factor;
+      const cupMeta = planRowsMeasuredMetaByCanonical('cup');
+      const galMeta = planRowsMeasuredMetaByCanonical('gal');
+      const tbspMeta = planRowsMeasuredMetaByCanonical('tbsp');
+      if (!cupMeta || !galMeta || !tbspMeta) return null;
+      const cups = numeric / cupMeta.factor;
+      const gallons = numeric / galMeta.factor;
       let unit = 'tsp';
       if (gallons >= 0.5) unit = 'gal';
       else if (cups >= 0.25) unit = 'cup';
-      else if (numeric / SHOPPING_LIST_MEASURED_UNIT_META.tbsp.factor >= 1) {
+      else if (numeric / tbspMeta.factor >= 1) {
         unit = 'tbsp';
       }
-      const rawQuantity = numeric / SHOPPING_LIST_MEASURED_UNIT_META[unit].factor;
+      const unitMeta = planRowsMeasuredMetaByCanonical(unit);
+      if (!unitMeta) return null;
+      const rawQuantity = numeric / unitMeta.factor;
       const step = unit === 'tsp' ? 0.5 : unit === 'cup' || unit === 'gal' ? 0.5 : 1;
       return { quantity: Math.ceil(rawQuantity / step) * step, unit };
     }

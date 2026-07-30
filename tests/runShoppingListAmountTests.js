@@ -13,6 +13,7 @@ const favoriteEatsAmountKitPath = path.join(projectRoot, 'js', 'favoriteEatsAmou
 const cookingVolumeLadderPath = path.join(projectRoot, 'js', 'cookingVolumeLadder.js');
 const quantityDisplayPolicyPath = path.join(projectRoot, 'js', 'quantityDisplayPolicy.js');
 const mainPath = path.join(projectRoot, 'js', 'main.js');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function extractSnippet(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -67,6 +68,7 @@ function loadHelpers() {
   };
 
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   vm.runInContext(decimalSnippet, context, { filename: 'utils.decimal-display.js' });
   vm.runInContext(grammarSnippet, context, { filename: 'utils.ingredient-grammar.js' });
 
@@ -150,6 +152,7 @@ function run() {
   const { helpers, context } = loadHelpers();
 
   assertEqual(helpers.normalizeShoppingListUnit('Fluid Ounces'), 'fl oz', 'fluid ounces normalize');
+  assertEqual(helpers.normalizeShoppingListUnit('floz'), 'fl oz', 'floz normalizes to fluid ounce');
   assertEqual(helpers.normalizeShoppingListUnit('cans'), 'can', 'plural package units singularize');
 
   const massBase = helpers.convertShoppingListQuantityToMeasuredBase(20, 'oz');
@@ -161,6 +164,18 @@ function run() {
       unit: 'lb',
     },
     '20 oz converts to 1.25 lb display bucket'
+  );
+
+  const flozBase = helpers.convertShoppingListQuantityToMeasuredBase(4, 'floz');
+  assertDeepEqual(
+    flozBase,
+    {
+      unit: 'fl oz',
+      family: 'volume',
+      baseUnit: 'ml',
+      baseQuantity: 118.294118,
+    },
+    '4 floz converts to volume base ml'
   );
 
   const gallonBase = helpers.convertShoppingListQuantityToMeasuredBase(1, 'gallon');

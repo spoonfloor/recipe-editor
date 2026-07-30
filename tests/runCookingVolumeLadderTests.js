@@ -8,6 +8,7 @@ const vm = require('vm');
 const projectRoot = path.resolve(__dirname, '..');
 const cookingVolumeLadderPath = path.join(projectRoot, 'js', 'cookingVolumeLadder.js');
 const quantityDisplayPolicyPath = path.join(projectRoot, 'js', 'quantityDisplayPolicy.js');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 const ML_PER_TSP = 4.92892159375;
 const ML_PER_TBSP = 14.78676478125;
@@ -17,6 +18,7 @@ const ML_PER_GAL = 3785.411784;
 function loadPolicy() {
   const context = { window: {}, console };
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   vm.runInContext(fs.readFileSync(cookingVolumeLadderPath, 'utf8'), context, {
     filename: 'cookingVolumeLadder.js',
   });

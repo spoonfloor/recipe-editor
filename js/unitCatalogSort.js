@@ -1,27 +1,14 @@
 // Units catalog list (units.html): sort volume → mass → other, by physical
 // size within measured volume/mass, then ASCII-nocase by unit code.
 //
-// Magnitudes match `SHOPPING_LIST_MEASURED_UNIT_META` in main.js (US cup, etc.).
+// Magnitudes come from favoriteEatsMeasuredUnitRegistry (US cup, etc.).
 
 (function initUnitCatalogSort(global) {
   if (!global) return;
 
-  const UNIT_MEASURED_MAGNITUDE_META = Object.freeze({
-    tsp: Object.freeze({ family: 'volume', baseAmount: 4.92892159375 }),
-    tbsp: Object.freeze({ family: 'volume', baseAmount: 14.78676478125 }),
-    cup: Object.freeze({ family: 'volume', baseAmount: 236.5882365 }),
-    'fl oz': Object.freeze({ family: 'volume', baseAmount: 29.5735295625 }),
-    floz: Object.freeze({ family: 'volume', baseAmount: 29.5735295625 }),
-    pt: Object.freeze({ family: 'volume', baseAmount: 473.176473 }),
-    qt: Object.freeze({ family: 'volume', baseAmount: 946.352946 }),
-    gal: Object.freeze({ family: 'volume', baseAmount: 3785.411784 }),
-    ml: Object.freeze({ family: 'volume', baseAmount: 1 }),
-    l: Object.freeze({ family: 'volume', baseAmount: 1000 }),
-    g: Object.freeze({ family: 'mass', baseAmount: 1 }),
-    kg: Object.freeze({ family: 'mass', baseAmount: 1000 }),
-    oz: Object.freeze({ family: 'mass', baseAmount: 28.349523125 }),
-    lb: Object.freeze({ family: 'mass', baseAmount: 453.59237 }),
-  });
+  function measuredUnitRegistry() {
+    return global.favoriteEatsMeasuredUnitRegistry || null;
+  }
 
   function asciiNocaseFold(s) {
     return String(s).replace(/[A-Z]/g, (c) => c.toLowerCase());
@@ -43,7 +30,11 @@
     if (bucket === 2) return 0;
 
     const key = normalizeUnitCodeKey(row?.code);
-    const meta = UNIT_MEASURED_MAGNITUDE_META[key];
+    const reg = measuredUnitRegistry();
+    const meta =
+      reg && typeof reg.getMagnitudeMeta === 'function'
+        ? reg.getMagnitudeMeta(key)
+        : null;
     if (!meta) return Number.POSITIVE_INFINITY;
     if (bucket === 0 && meta.family !== 'volume') return Number.POSITIVE_INFINITY;
     if (bucket === 1 && meta.family !== 'mass') return Number.POSITIVE_INFINITY;
@@ -78,6 +69,5 @@
     return list.slice().sort(compareUnitsListCatalogRows);
   }
 
-  global.UNIT_MEASURED_MAGNITUDE_META = UNIT_MEASURED_MAGNITUDE_META;
   global.sortUnitsListForCatalogUi = sortUnitsListForCatalogUi;
 })(typeof globalThis !== 'undefined' ? globalThis : window);

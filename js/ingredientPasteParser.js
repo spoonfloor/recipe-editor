@@ -922,6 +922,15 @@
   function createIngredientPasteUnitRegistry(catalogUnits) {
     const tokenToCode = Object.create(null);
 
+    const reg =
+      typeof window !== 'undefined' ? window.favoriteEatsMeasuredUnitRegistry : null;
+    if (reg && reg.MEASURED_UNIT_ALIASES) {
+      Object.keys(reg.MEASURED_UNIT_ALIASES).forEach((token) => {
+        const key = normalizeUnitToken(token);
+        if (key) tokenToCode[key] = reg.MEASURED_UNIT_ALIASES[token];
+      });
+    }
+
     Object.keys(UNIT_ALIASES).forEach((token) => {
       const key = normalizeUnitToken(token);
       if (key) tokenToCode[key] = UNIT_ALIASES[token];

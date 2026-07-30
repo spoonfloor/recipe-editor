@@ -6,6 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const projectRoot = path.resolve(__dirname, '..');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function loadIngredientDisplay() {
   const utilsSource = fs.readFileSync(path.join(projectRoot, 'js', 'utils.js'), 'utf8');
@@ -13,6 +14,7 @@ function loadIngredientDisplay() {
   const end = utilsSource.indexOf('function showUndoToastGlobal(');
   const ctx = { window: {}, console };
   vm.createContext(ctx);
+  installMeasuredUnitRegistry(ctx);
   vm.runInContext(utilsSource.slice(start, end), ctx, { filename: 'utils-snippet.js' });
   vm.runInContext(
     fs.readFileSync(path.join(projectRoot, 'js', 'unitQuantityFormat.js'), 'utf8'),

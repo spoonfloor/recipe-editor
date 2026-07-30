@@ -6,6 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const projectRoot = path.resolve(__dirname, '..');
+const { installMeasuredUnitRegistry } = require('./measuredUnitRegistryTestSetup');
 
 function extractSnippet(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -55,6 +56,7 @@ function loadFormatShoppingQtyForDisplay() {
 
   const context = { window: {}, console };
   vm.createContext(context);
+  installMeasuredUnitRegistry(context);
   vm.runInContext(decimalSnippet, context, { filename: 'utils.decimal-display.js' });
   context.window.decimalToFractionDisplay = context.decimalToFractionDisplay;
   vm.runInContext(

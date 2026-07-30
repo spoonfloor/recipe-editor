@@ -463,8 +463,28 @@
         ranked.forEach((item, idx) => {
           const row = document.createElement('div');
           row.className = 'typeahead-item';
-          row.dataset.value = item;
-          row.textContent = item;
+          const value =
+            item && typeof item === 'object' && item.value != null
+              ? String(item.value)
+              : String(item);
+          row.dataset.value = value;
+          if (this.config && typeof this.config.renderItemDisplay === 'function') {
+            try {
+              this.config.renderItemDisplay(row, value, item);
+            } catch (_) {
+              row.textContent = value;
+            }
+          } else {
+            let label = value;
+            if (this.config && typeof this.config.formatItemDisplay === 'function') {
+              try {
+                label = this.config.formatItemDisplay(value, item) || value;
+              } catch (_) {}
+            } else if (item && typeof item === 'object' && item.label != null) {
+              label = String(item.label);
+            }
+            row.textContent = label;
+          }
           if (idx === this.highlightIdx) row.classList.add('is-highlighted');
           container.appendChild(row);
         });
@@ -815,6 +835,8 @@
     minWidth,
     maxWidth,
     placement,
+    formatItemDisplay,
+    renderItemDisplay,
   }) {
     if (!inputEl) return;
     const cfg = {
@@ -836,6 +858,8 @@
       minWidth,
       maxWidth,
       placement,
+      formatItemDisplay,
+      renderItemDisplay,
     };
 
     // If Escape is used to cancel the row, suppress blur-time normalization/toasts.
@@ -1090,6 +1114,17 @@
         openOnFocus: true,
         getItems: (pool, query) =>
           filterAndRankPreservePoolOrderOnEmpty(pool, query),
+        renderItemDisplay(row, code) {
+          const reg =
+            typeof window !== 'undefined'
+              ? window.favoriteEatsMeasuredUnitRegistry
+              : null;
+          if (reg && typeof reg.renderUnitTypeaheadItem === 'function') {
+            reg.renderUnitTypeaheadItem(row, code);
+            return;
+          }
+          row.textContent = code;
+        },
       });
 
       unitInput.addEventListener('blur', async () => {
