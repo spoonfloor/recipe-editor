@@ -17,6 +17,12 @@ const captureMigrationPath = path.join(
   'migrations',
   '20260705140000_plan_session_autosave_client_capture.sql',
 );
+const closeActiveMigrationPath = path.join(
+  projectRoot,
+  'supabase',
+  'migrations',
+  '20260730180000_close_active_plan_session.sql',
+);
 const planSessionPath = path.join(
   projectRoot,
   'js',
@@ -49,6 +55,7 @@ function assert(condition, message) {
 
 const sql = fs.readFileSync(migrationPath, 'utf8');
 const captureSql = fs.readFileSync(captureMigrationPath, 'utf8');
+const closeActiveSql = fs.readFileSync(closeActiveMigrationPath, 'utf8');
 const planSessionJs = fs.readFileSync(planSessionPath, 'utf8');
 const dataIndexJs = fs.readFileSync(dataIndexPath, 'utf8');
 const mainJs = fs.readFileSync(mainPath, 'utf8');
@@ -93,6 +100,16 @@ assert(
 assert(
   sql.includes('create or replace function catalog.delete_plan_session'),
   'Migration should define delete_plan_session RPC.',
+);
+assert(
+  closeActiveSql.includes(
+    'create or replace function catalog.close_active_plan_session()',
+  ),
+  'Migration should define close_active_plan_session RPC.',
+);
+assert(
+  closeActiveSql.includes('active_named_snapshot_id = null'),
+  'Close active session should clear plan.documents.active_named_snapshot_id.',
 );
 assert(
   sql.includes('internal_trim_auto_plan_sessions'),
@@ -192,7 +209,7 @@ assert(
 );
 assert(
   itemsPageJs.includes('flushPlanNarrowRpcQueuesWithSessionCommitBatch'),
-  'Items Add all should flush narrow RPC queues through the batch gate.',
+  'Items bulk planner adds should flush narrow RPC queues through the batch gate.',
 );
 assert(
   !shoppingListPageJs.includes('notifyListOverridePersisted') &&
@@ -206,10 +223,7 @@ assert(
     !shoppingListPageJs.includes('shoppingListRowDraftByRowId'),
   'Shopping list row edits should commit immediately without draft buffers or nav speedbumps.',
 );
-assert(
-  recipesPageJs.includes('flushPlanNarrowRpcQueuesWithSessionCommitBatch'),
-  'Recipes Add all should flush narrow RPC queues through the batch gate.',
-);
+
 assert(
   /clearShoppingPlanSelections\(\{[\s\S]*allowEmptyPlanRemoteSave: true[\s\S]*\}\);[\s\S]*await flushCoalescedPlanSaveToDataService\(\{ awaited: true \}\)/.test(
     recipesPageJs,
@@ -310,13 +324,74 @@ assert(
 );
 assert(
   !planSessionJs.includes('Save as'),
-  'Save modal should use a single Save CTA.',
+  'Save modal should not use a separate Save-as CTA.',
+);
+assert(
+  planSessionJs.includes('planSessionSaveConfirmText') &&
+    planSessionJs.includes("return 'Update'") &&
+    planSessionJs.includes('getConfirmText'),
+  'Save modal should flip Update/Save CTA from the session name field.',
 );
 assert(
   [recipesHtml, shoppingHtml, shoppingListHtml].every((html) =>
     html.includes(planSessionScriptTag),
   ),
   'Plan session module should load on every surface that commits plan changes.',
+);
+assert(
+  planSessionJs.includes('resolveDirtyBeforeClearAllItems') &&
+    planSessionJs.includes('resolveDirtyBeforeCloseNamedSession') &&
+    planSessionJs.includes('closing this session') &&
+    planSessionJs.includes('resolveDirtyNamedSessionBeforeAction'),
+  'Plan session module should expose unsaved-changes gates for clear-all and close.',
+);
+assert(
+  /async function closeActiveNamedSession\([\s\S]*resolveDirtyBeforeCloseNamedSession/.test(
+    planSessionJs,
+  ),
+  'Close this session should resolve unsaved changes before detaching.',
+);
+assert(
+  [itemsPageJs, recipesPageJs, shoppingListPageJs].every((source) =>
+    /uiConfirm\([\s\S]*Clear all items[\s\S]*resolveDirtyBeforeClearAllItems/.test(
+      source,
+    ),
+  ),
+  'Clear all items should confirm first, then resolve unsaved plan changes.',
+);
+assert(
+  /resolveDirtyNamedSessionBeforeAction[\s\S]*activeNamedSnapshotId == null/.test(
+    planSessionJs,
+  ),
+  'Unsaved-changes gate should require an active named session, not catalog presence.',
+);
+assert(
+  planSessionJs.includes('Close this session') &&
+    planSessionJs.includes('createCloseSessionMonogramButton') &&
+    planSessionJs.includes('closeActiveNamedSession') &&
+    planSessionJs.includes('closeActivePlanSession'),
+  'Plan session module should expose Close this session monogram action.',
+);
+assert(
+  dataIndexJs.includes('closeActivePlanSession'),
+  'data/index.js should wire closeActivePlanSession RPC.',
+);
+assert(
+  (() => {
+    const match = planSessionJs.match(
+      /function presentSessionPickerStep\([\s\S]*?\n  \}\n\n  async function fetchPlanSessionCatalog/,
+    );
+    return match && !match[0].includes('Close this session');
+  })(),
+  'Close this session should not appear in the manage sessions modal.',
+);
+assert(
+  [itemsPageJs, recipesPageJs, shoppingListPageJs].every((source) =>
+    /createManageMonogramButton[\s\S]*createCloseSessionMonogramButton/.test(
+      source,
+    ),
+  ),
+  'Monogram menus should wire Close this session directly beneath Manage sessions.',
 );
 
 console.log('runPlanSessionsMigrationTests: ok');

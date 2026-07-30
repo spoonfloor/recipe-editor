@@ -213,6 +213,10 @@
       'deletePlanSession',
       (snapshotId) => adapter().deletePlanSession(snapshotId),
     ),
+    closeActivePlanSession: guardDemoRemoteShoppingWrite(
+      'closeActivePlanSession',
+      () => adapter().closeActivePlanSession(),
+    ),
     rewritePlanItemKeys: guardDemoRemoteShoppingWrite('rewritePlanItemKeys', (request) =>
       adapter().rewritePlanItemKeys(request),
     ),

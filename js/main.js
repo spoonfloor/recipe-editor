@@ -2009,7 +2009,9 @@ function getShoppingListBucketSortPriority(bucket) {
   if (!bucket || typeof bucket !== 'object') return 99;
   if (bucket.kind === 'unspecified') return 0;
   if (bucket.kind === 'selected' || bucket.kind === 'count') return 1;
-  return 2;
+  if (bucket.kind === 'measured') return 3;
+  if (bucket.kind === 'exact') return 2;
+  return 4;
 }
 
 function formatShoppingListUnspecifiedLeadText({ size = '' } = {}) {
@@ -2084,6 +2086,96 @@ function getShoppingListTailDisplayBuckets(buckets) {
   return (Array.isArray(buckets) ? buckets : []).filter(
     (bucket) => bucket && bucket.kind !== 'selected',
   );
+}
+
+function coalesceShoppingListMeasuredBucketsByFamily(measuredBuckets) {
+  const byFamily = new Map();
+  (Array.isArray(measuredBuckets) ? measuredBuckets : []).forEach((bucket) => {
+    if (!bucket || bucket.kind !== 'measured') return;
+    const family = String(bucket.family || '').trim() || 'unknown';
+    if (!byFamily.has(family)) {
+      byFamily.set(family, []);
+    }
+    byFamily.get(family).push(bucket);
+  });
+  const result = [];
+  byFamily.forEach((familyBuckets) => {
+    if (familyBuckets.length === 1) {
+      result.push({ ...familyBuckets[0] });
+      return;
+    }
+    const merged = {
+      key: `measured:${familyBuckets[0].family || 'unknown'}`,
+      kind: 'measured',
+      family: familyBuckets[0].family || 'unknown',
+      baseUnit: familyBuckets.find((bucket) => bucket.baseUnit)?.baseUnit || '',
+      baseQuantity: 0,
+      unit: '',
+    };
+    familyBuckets.forEach((bucket) => {
+      merged.baseQuantity = Number(
+        (
+          Number(merged.baseQuantity || 0) + Number(bucket.baseQuantity || 0)
+        ).toFixed(6),
+      );
+    });
+    if (Number(merged.baseQuantity || 0) > 1e-9) {
+      result.push(merged);
+    }
+  });
+  return result;
+}
+
+function coalesceShoppingListExactBuckets(exactBuckets) {
+  const byKey = new Map();
+  (Array.isArray(exactBuckets) ? exactBuckets : []).forEach((bucket) => {
+    if (!bucket || bucket.kind !== 'exact') return;
+    const bucketKey =
+      String(bucket.key || '').trim() ||
+      `exact:${normalizeShoppingListUnit(bucket.unit || '')}|${String(bucket.size || '')
+        .trim()
+        .toLowerCase()}`;
+    if (!byKey.has(bucketKey)) {
+      byKey.set(bucketKey, []);
+    }
+    byKey.get(bucketKey).push(bucket);
+  });
+  const result = [];
+  byKey.forEach((keyBuckets) => {
+    if (keyBuckets.length === 1) {
+      result.push({ ...keyBuckets[0] });
+      return;
+    }
+    const merged = {
+      ...keyBuckets[0],
+      quantity: 0,
+    };
+    keyBuckets.forEach((bucket) => {
+      merged.quantity = Number(
+        (Number(merged.quantity || 0) + Number(bucket.quantity || 0)).toFixed(4),
+      );
+    });
+    if (Number(merged.quantity || 0) > 1e-9) {
+      result.push(merged);
+    }
+  });
+  return result;
+}
+
+function coalesceShoppingListTailBuckets(tails) {
+  const list = (Array.isArray(tails) ? tails : []).filter(
+    (bucket) => bucket && typeof bucket === 'object',
+  );
+  const measured = list.filter((bucket) => bucket.kind === 'measured');
+  const exact = list.filter((bucket) => bucket.kind === 'exact');
+  const rest = list.filter(
+    (bucket) => bucket.kind !== 'measured' && bucket.kind !== 'exact',
+  );
+  return [
+    ...rest,
+    ...coalesceShoppingListMeasuredBucketsByFamily(measured),
+    ...coalesceShoppingListExactBuckets(exact),
+  ];
 }
 
 function buildShoppingListDisplayMergeBuckets(
@@ -2165,7 +2257,7 @@ function buildShoppingListDisplayMergeBuckets(
     });
   }
 
-  displayBuckets.push(...tails);
+  displayBuckets.push(...coalesceShoppingListTailBuckets(tails));
   return displayBuckets;
 }
 

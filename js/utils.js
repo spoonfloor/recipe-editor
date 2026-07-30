@@ -1974,6 +1974,7 @@ if (typeof window !== 'undefined') {
     messageNode = null, // Optional extra body content (e.g. links list)
     fields = null, // [{ key, label, type, value, placeholder, required, autocapitalize, options, validate }]
     confirmText = 'OK',
+    getConfirmText = null, // (values) => string — live primary CTA label
     cancelText = 'Cancel',
     showCancel = true,
     danger = false,
@@ -2341,6 +2342,14 @@ if (typeof window !== 'undefined') {
 
         setError(err);
         confirmBtn.disabled = !!err || hasMissingRequired || hasFieldErrors;
+        let nextConfirmText = confirmText || 'OK';
+        if (typeof getConfirmText === 'function') {
+          try {
+            const dynamic = String(getConfirmText(values) || '').trim();
+            if (dynamic) nextConfirmText = dynamic;
+          } catch (_) {}
+        }
+        confirmBtn.textContent = modalText(nextConfirmText);
       };
 
       const doCancel = () => {
@@ -3095,6 +3104,7 @@ if (typeof window !== 'undefined') {
     value = '',
     placeholder = '',
     confirmText = 'OK',
+    getConfirmText = null, // (values) => string — live primary CTA label
     cancelText = 'Cancel',
     required = false,
     normalize = null, // (v) => v
@@ -3115,6 +3125,7 @@ if (typeof window !== 'undefined') {
         },
       ],
       confirmText,
+      getConfirmText,
       cancelText,
       showCancel: true,
       validate: (vals) => {

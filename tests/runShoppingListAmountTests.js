@@ -384,8 +384,147 @@ function run() {
         },
       ],
     }),
-    '7 + 2 tbsp + 2½ tsp',
-    'direct stepper count prefixes multiple recipe volume tails'
+    '7 + 2 tbsp + 2 ½ tsp',
+    'volume family coalesces across units before ladder display'
+  );
+
+  assertEqual(
+    helpers.formatShoppingListDisplayDetailText({
+      buckets: [
+        { key: 'selected', kind: 'selected', quantity: 2 },
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 1 * 4.92892159375,
+        },
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 0.25 * 4.92892159375,
+        },
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 0.25 * 4.92892159375,
+        },
+        {
+          key: 'measured:g',
+          kind: 'measured',
+          unit: 'g',
+          family: 'mass',
+          baseQuantity: 100,
+        },
+        {
+          key: 'measured:g',
+          kind: 'measured',
+          unit: 'g',
+          family: 'mass',
+          baseQuantity: 50,
+        },
+        { key: 'unspecified', kind: 'unspecified', quantity: 1 },
+      ],
+    }),
+    '2 + some + ½ tbsp + 7 oz',
+    'compatible volume and mass families sum; unlike buckets stay separate'
+  );
+
+  assertEqual(
+    helpers.formatShoppingListDisplayDetailText({
+      buckets: [
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 0.25 * 4.92892159375,
+        },
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 0.25 * 4.92892159375,
+        },
+      ],
+    }),
+    '½ tsp',
+    'same-recipe duplicate volume lines coalesce to one ladder label'
+  );
+
+  assertEqual(
+    helpers.formatShoppingListDisplayDetailText({
+      buckets: [
+        {
+          key: 'measured:tbsp',
+          kind: 'measured',
+          unit: 'tbsp',
+          family: 'volume',
+          baseQuantity: 1 * 14.78676478125,
+        },
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 1 * 4.92892159375,
+        },
+        {
+          key: 'measured:tbsp',
+          kind: 'measured',
+          unit: 'tbsp',
+          family: 'volume',
+          baseQuantity: 1 * 14.78676478125,
+        },
+      ],
+    }),
+    '2 tbsp + 1 tsp',
+    'cumin-style cross-recipe volume rollup'
+  );
+
+  assertEqual(
+    helpers.formatShoppingListDisplayDetailText({
+      buckets: [
+        {
+          key: 'measured:tbsp',
+          kind: 'measured',
+          unit: 'tbsp',
+          family: 'volume',
+          baseQuantity: 1 * 14.78676478125,
+        },
+        {
+          key: 'measured:tbsp',
+          kind: 'measured',
+          unit: 'tbsp',
+          family: 'volume',
+          baseQuantity: 1 * 14.78676478125,
+        },
+      ],
+    }),
+    '2 tbsp',
+    'duplicate tbsp within one recipe coalesces'
+  );
+
+  assertEqual(
+    helpers.formatShoppingListDisplayDetailText({
+      buckets: [
+        { key: 'count', kind: 'count', quantity: 1 },
+        {
+          key: 'measured:tsp',
+          kind: 'measured',
+          unit: 'tsp',
+          family: 'volume',
+          baseQuantity: 1 * 4.92892159375,
+        },
+      ],
+    }),
+    '1 + 1 tsp',
+    'unitless count stays separate from coalesced volume'
   );
 
   assertEqual(

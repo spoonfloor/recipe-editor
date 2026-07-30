@@ -3738,6 +3738,16 @@
     return result && typeof result === 'object' ? result : {};
   }
 
+  async function closeActivePlanSession(opts) {
+    const result = await pgRpc(
+      opts,
+      'close_active_plan_session',
+      {},
+      'closeActivePlanSession',
+    );
+    return result && typeof result === 'object' ? result : {};
+  }
+
   async function rewritePlanItemKeys(opts, request = {}) {
     const rewrites = Array.isArray(request?.rewrites) ? request.rewrites : [];
     const result = await pgRpc(
@@ -8830,6 +8840,7 @@
       createAutoPlanSession: (capture) => createAutoPlanSession(opts, capture),
       loadPlanSession: (snapshotId) => loadPlanSession(opts, snapshotId),
       deletePlanSession: (snapshotId) => deletePlanSession(opts, snapshotId),
+      closeActivePlanSession: () => closeActivePlanSession(opts),
       rewritePlanItemKeys: (request) => rewritePlanItemKeys(opts, request),
       patchShoppingListSourceKeys: (request) =>
         patchShoppingListSourceKeys(opts, request),

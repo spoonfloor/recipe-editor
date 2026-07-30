@@ -2414,32 +2414,6 @@
     panel.appendChild(host);
   };
 
-  const shoppingAddAllWouldChangePlan = () => {
-    if (!isShoppingPlannerSelectMode()) return false;
-    for (const item of shoppingRows) {
-      if (!item || item.isHidden === true || item.isDeprecated === true) {
-        continue;
-      }
-      const baseName = String(item?.name || '').trim();
-      if (!baseName) continue;
-      const variants = Array.isArray(item?.variants) ? item.variants : [];
-      const planKeys =
-        variants.length > 0
-          ? variants.map((variantName) =>
-              getBrowseVariantPlanKey(baseName, variantName, item),
-            )
-          : [getShoppingItemVariantAwareKey(baseName)];
-      for (const planKey of planKeys) {
-        const key = String(planKey || '').trim();
-        if (!key) continue;
-        if (!hasPositiveShoppingQty(getDirectShoppingQty(key))) {
-          return true;
-        }
-      }
-    }
-    return false;
-  };
-
   const flushPlanNarrowRpcBatchIfRemote = async () => {
     if (
       shouldUseRemoteShoppingState() &&
@@ -2475,16 +2449,6 @@
         throw fallbackErr;
       }
     }
-  };
-
-  const applyShoppingSelectAllSelections = async () => {
-    if (!isShoppingPlannerSelectMode()) return false;
-    if (!shoppingAddAllWouldChangePlan()) return false;
-    const changed = applyShoppingPlannerSelectionsForMatchingItems(() => true);
-    if (changed) {
-      await flushPlanNarrowRpcBatchIfRemote();
-    }
-    return changed;
   };
 
   const applyShoppingPlannerSelectionsForMatchingItems = (itemPredicate) => {
@@ -2650,6 +2614,15 @@
       cancelText: 'Cancel',
     });
     if (!confirmed) return;
+    if (
+      window.favoriteEatsPlanSession &&
+      typeof window.favoriteEatsPlanSession.resolveDirtyBeforeClearAllItems ===
+        'function'
+    ) {
+      const dirtyOk =
+        await window.favoriteEatsPlanSession.resolveDirtyBeforeClearAllItems();
+      if (!dirtyOk) return;
+    }
     const previousPlan = cloneForUndo(getShoppingPlan(), () =>
       createEmptyShoppingPlan(),
     );
@@ -2725,13 +2698,20 @@
   };
 
   let itemsMonogramManageBtn = null;
+  let itemsMonogramCloseSessionBtn = null;
   let itemsMonogramClearBtn = null;
-  let itemsMonogramAddAllBtn = null;
   let itemsMonogramAddByTagBtn = null;
-  const syncItemsMonogramManageButtonState = () => {
-    if (!(itemsMonogramManageBtn instanceof HTMLButtonElement)) return;
-    itemsMonogramManageBtn.disabled = false;
-    itemsMonogramManageBtn.setAttribute('aria-disabled', 'false');
+  const syncItemsMonogramPlanSessionButtonState = () => {
+    if (
+      window.favoriteEatsPlanSession &&
+      typeof window.favoriteEatsPlanSession.syncPlanSessionMonogramButtonState ===
+        'function'
+    ) {
+      window.favoriteEatsPlanSession.syncPlanSessionMonogramButtonState(
+        itemsMonogramManageBtn,
+        itemsMonogramCloseSessionBtn,
+      );
+    }
   };
   const syncItemsMonogramClearButtonState = () => {
     if (!(itemsMonogramClearBtn instanceof HTMLButtonElement)) return;
@@ -2745,17 +2725,8 @@
     );
   };
   const syncItemsMonogramExtraButtonsState = () => {
-    syncItemsMonogramManageButtonState();
+    syncItemsMonogramPlanSessionButtonState();
     syncItemsMonogramClearButtonState();
-    if (itemsMonogramAddAllBtn instanceof HTMLButtonElement) {
-      const shouldDisableAddAll =
-        !isShoppingPlannerSelectMode() || !shoppingAddAllWouldChangePlan();
-      itemsMonogramAddAllBtn.disabled = shouldDisableAddAll;
-      itemsMonogramAddAllBtn.setAttribute(
-        'aria-disabled',
-        shouldDisableAddAll ? 'true' : 'false',
-      );
-    }
     if (itemsMonogramAddByTagBtn instanceof HTMLButtonElement) {
       const shouldDisableAddByTag =
         !isShoppingPlannerSelectMode() ||
@@ -2767,38 +2738,7 @@
       );
     }
   };
-  const ensureItemsMonogramPlannerButtons = () => {
-    if (!(itemsMonogramAddAllBtn instanceof HTMLButtonElement)) {
-      itemsMonogramAddAllBtn = document.createElement('button');
-      itemsMonogramAddAllBtn.type = 'button';
-      itemsMonogramAddAllBtn.id = 'appBarMonogramItemsAddAllBtn';
-      itemsMonogramAddAllBtn.className = 'bottom-nav-pill';
-      itemsMonogramAddAllBtn.textContent = 'Add all';
-      itemsMonogramAddAllBtn.addEventListener('click', async () => {
-        if (itemsMonogramAddAllBtn.disabled) return;
-        let ok = false;
-        if (window.ui && typeof window.ui.dialog === 'function') {
-          ok = !!(await window.ui.dialog({
-            title: 'Add all',
-            message:
-              'Add every item in the catalog? One of each item and its variants will be added.',
-            confirmText: 'Add all',
-            cancelText: 'Cancel',
-          }));
-        } else {
-          ok = await uiConfirm({
-            title: 'Add all',
-            message:
-              'Add every item in the catalog? One of each item and its variants will be added.',
-            confirmText: 'Add all',
-            cancelText: 'Cancel',
-          });
-        }
-        if (!ok) return;
-        await applyShoppingSelectAllSelections();
-        syncItemsMonogramExtraButtonsState();
-      });
-    }
+  const ensureItemsMonogramAddByTagButton = () => {
     if (!(itemsMonogramAddByTagBtn instanceof HTMLButtonElement)) {
       itemsMonogramAddByTagBtn = document.createElement('button');
       itemsMonogramAddByTagBtn.type = 'button';
@@ -2810,13 +2750,18 @@
         void openAddByTagModal();
       });
     }
-    return [itemsMonogramAddAllBtn, itemsMonogramAddByTagBtn];
+    return [itemsMonogramAddByTagBtn];
   };
   const ensureItemsMonogramActionButtons = () => {
     if (!isShoppingPlannerSelectMode()) return [];
     if (!(itemsMonogramManageBtn instanceof HTMLButtonElement)) {
       itemsMonogramManageBtn =
         window.favoriteEatsPlanSession?.createManageMonogramButton?.() || null;
+    }
+    if (!(itemsMonogramCloseSessionBtn instanceof HTMLButtonElement)) {
+      itemsMonogramCloseSessionBtn =
+        window.favoriteEatsPlanSession?.createCloseSessionMonogramButton?.() ||
+        null;
     }
     if (!(itemsMonogramClearBtn instanceof HTMLButtonElement)) {
       itemsMonogramClearBtn = document.createElement('button');
@@ -2829,11 +2774,14 @@
         void handleClearItemsFromPlan();
       });
     }
-    const plannerButtons = ensureItemsMonogramPlannerButtons();
+    const plannerButtons = ensureItemsMonogramAddByTagButton();
     syncItemsMonogramExtraButtonsState();
     const buttons = [];
     if (itemsMonogramManageBtn instanceof HTMLButtonElement) {
       buttons.push(itemsMonogramManageBtn);
+    }
+    if (itemsMonogramCloseSessionBtn instanceof HTMLButtonElement) {
+      buttons.push(itemsMonogramCloseSessionBtn);
     }
     if (itemsMonogramClearBtn instanceof HTMLButtonElement) {
       buttons.push(itemsMonogramClearBtn);

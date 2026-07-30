@@ -452,14 +452,19 @@
     void runAutoSaveNow();
   }
 
-  async function resolveDirtyBeforeLoadNamedSession() {
-    if (!isDirty() || !hasNamedSnapshot) return true;
+  async function resolveDirtyNamedSessionBeforeAction(actionPhrase) {
+    if (!isDirty() || activeNamedSnapshotId == null) return true;
+    const phrase = String(actionPhrase || '').trim();
     const sessionName = String(activeNamedName || '').trim();
     const unsavedMessage = sessionName
       ? 'The meal plan “' +
         sessionName +
-        '” has unsaved changes. Would you like to save it before loading another meal plan?'
-      : 'This meal plan has unsaved changes. Would you like to save it before loading another meal plan?';
+        '” has unsaved changes. Would you like to save it before ' +
+        phrase +
+        '?'
+      : 'This meal plan has unsaved changes. Would you like to save it before ' +
+        phrase +
+        '?';
     const ui = global.ui;
     if (!ui || typeof ui.dialogThreeChoice !== 'function') {
       return global.confirm(
@@ -489,6 +494,18 @@
     baselineFingerprint = computeLocalFingerprint();
     persistSessionMirror();
     return true;
+  }
+
+  async function resolveDirtyBeforeLoadNamedSession() {
+    return resolveDirtyNamedSessionBeforeAction('loading another meal plan');
+  }
+
+  async function resolveDirtyBeforeClearAllItems() {
+    return resolveDirtyNamedSessionBeforeAction('clearing all items');
+  }
+
+  async function resolveDirtyBeforeCloseNamedSession() {
+    return resolveDirtyNamedSessionBeforeAction('closing this session');
   }
 
   async function confirmReplaceExistingSession(sessionName) {
@@ -605,6 +622,19 @@
     }
   }
 
+  function planSessionSaveConfirmText(name) {
+    const trimmed = String(name || '').trim();
+    const activeName = String(activeNamedName || '').trim();
+    if (
+      activeNamedSnapshotId != null &&
+      activeName !== '' &&
+      trimmed === activeName
+    ) {
+      return 'Update';
+    }
+    return 'Save';
+  }
+
   async function promptSessionName(options = {}) {
     const ui = global.ui;
     const initialValue =
@@ -612,6 +642,7 @@
         ? String(options.initialValue)
         : formatDefaultSessionName();
     const placeholder = formatDefaultSessionName();
+    const normalizeName = (v) => String(v || '').trim();
     if (ui && typeof ui.prompt === 'function') {
       const name = await ui.prompt({
         title: 'Save meal plan',
@@ -620,9 +651,13 @@
         value: initialValue,
         placeholder,
         confirmText: options.confirmText || 'Save',
+        getConfirmText: (vals) =>
+          planSessionSaveConfirmText(
+            normalizeName(vals?.value != null ? vals.value : ''),
+          ),
         cancelText: 'Cancel',
         required: true,
-        normalize: (v) => String(v || '').trim(),
+        normalize: normalizeName,
       });
       return name != null ? String(name).trim() : null;
     }
@@ -658,7 +693,6 @@
       const name = await promptSessionName({
         message: saveMessage,
         initialValue,
-        confirmText: 'Save',
       });
       if (!name) return false;
       initialValue = name;
@@ -1428,6 +1462,70 @@
     return btn;
   }
 
+  async function closeActiveNamedSession() {
+    if (
+      !shouldUseRemote() ||
+      !global.dataService ||
+      typeof global.dataService.closeActivePlanSession !== 'function'
+    ) {
+      if (typeof global.uiToast === 'function') {
+        global.uiToast('Closing sessions requires a connected account.');
+      }
+      return false;
+    }
+    if (activeNamedSnapshotId == null) return false;
+
+    const dirtyOk = await resolveDirtyBeforeCloseNamedSession();
+    if (!dirtyOk) return false;
+
+    try {
+      global.dataService.useSupabase = true;
+      await global.dataService.closeActivePlanSession();
+      activeNamedSnapshotId = null;
+      activeNamedName = '';
+      setBaselineFromCurrentLiveState();
+      persistSessionMirror();
+      if (typeof global.uiToast === 'function') {
+        global.uiToast('Session closed.');
+      }
+      if (typeof global.favoriteEatsCloseMonogramAccountMenu === 'function') {
+        global.favoriteEatsCloseMonogramAccountMenu();
+      }
+      return true;
+    } catch (err) {
+      console.warn('closeActivePlanSession failed:', err);
+      if (typeof global.uiToast === 'function') {
+        global.uiToast('Could not close session.');
+      }
+      return false;
+    }
+  }
+
+  function syncPlanSessionMonogramButtonState(manageBtn, closeBtn) {
+    if (manageBtn instanceof HTMLButtonElement) {
+      manageBtn.disabled = false;
+      manageBtn.setAttribute('aria-disabled', 'false');
+    }
+    if (closeBtn instanceof HTMLButtonElement) {
+      const canClose = activeNamedSnapshotId != null;
+      closeBtn.disabled = !canClose;
+      closeBtn.setAttribute('aria-disabled', canClose ? 'false' : 'true');
+    }
+  }
+
+  function createCloseSessionMonogramButton() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'appBarMonogramClosePlanSessionBtn';
+    btn.className = 'bottom-nav-pill';
+    btn.textContent = 'Close this session';
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      void closeActiveNamedSession();
+    });
+    return btn;
+  }
+
   global.favoriteEatsPlanSession = {
     refreshCatalogFromServer,
     openSaveDialog,
@@ -1435,6 +1533,9 @@
     wireShoppingListSaveButton,
     syncShoppingListPlanSessionSaveButtonState,
     createManageMonogramButton,
+    createCloseSessionMonogramButton,
+    syncPlanSessionMonogramButtonState,
+    closeActiveNamedSession,
     onRemoteSessionCommit,
     beginSessionCommitBatch,
     endSessionCommitBatch,
@@ -1443,9 +1544,11 @@
     suppressAutoSave,
     releaseAutoSave,
     isDirty,
+    resolveDirtyBeforeClearAllItems,
     hasSaveablePlanContent,
     getHasNamedSnapshot: () => hasNamedSnapshot,
     getActiveNamedName: () => activeNamedName,
+    getActiveNamedSnapshotId: () => activeNamedSnapshotId,
     formatDefaultSessionName,
   };
 })(typeof window !== 'undefined' ? window : undefined);

@@ -3426,6 +3426,15 @@
       cancelText: 'Cancel',
     });
     if (!confirmed) return;
+    if (
+      window.favoriteEatsPlanSession &&
+      typeof window.favoriteEatsPlanSession.resolveDirtyBeforeClearAllItems ===
+        'function'
+    ) {
+      const dirtyOk =
+        await window.favoriteEatsPlanSession.resolveDirtyBeforeClearAllItems();
+      if (!dirtyOk) return;
+    }
     const previousPlan = cloneForUndo(getShoppingPlan(), () =>
       createEmptyShoppingPlan(),
     );
@@ -3464,6 +3473,7 @@
   };
 
   let shoppingListMonogramManageBtn = null;
+  let shoppingListMonogramCloseSessionBtn = null;
   let shoppingListMonogramClearBtn = null;
   let shoppingListMonogramResetBtn = null;
   let shoppingListMonogramUncheckAllBtn = null;
@@ -3483,6 +3493,11 @@
     if (!(shoppingListMonogramManageBtn instanceof HTMLButtonElement)) {
       shoppingListMonogramManageBtn =
         window.favoriteEatsPlanSession?.createManageMonogramButton?.() ||
+        null;
+    }
+    if (!(shoppingListMonogramCloseSessionBtn instanceof HTMLButtonElement)) {
+      shoppingListMonogramCloseSessionBtn =
+        window.favoriteEatsPlanSession?.createCloseSessionMonogramButton?.() ||
         null;
     }
     if (!(shoppingListMonogramClearBtn instanceof HTMLButtonElement)) {
@@ -3539,6 +3554,9 @@
     if (shoppingListMonogramManageBtn instanceof HTMLButtonElement) {
       menuButtons.push(shoppingListMonogramManageBtn);
     }
+    if (shoppingListMonogramCloseSessionBtn instanceof HTMLButtonElement) {
+      menuButtons.push(shoppingListMonogramCloseSessionBtn);
+    }
     if (shoppingListMonogramClearBtn instanceof HTMLButtonElement) {
       menuButtons.push(shoppingListMonogramClearBtn);
     }
@@ -3552,17 +3570,24 @@
   webCopyBtn = shoppingListMonogramCopyBtn;
   controlsCopyBtn = shoppingListMonogramCopyBtn;
 
-  const syncShoppingListManageButtonState = () => {
-    if (!(shoppingListMonogramManageBtn instanceof HTMLButtonElement)) return;
-    shoppingListMonogramManageBtn.disabled = false;
-    shoppingListMonogramManageBtn.setAttribute('aria-disabled', 'false');
+  const syncShoppingListPlanSessionButtonState = () => {
+    if (
+      window.favoriteEatsPlanSession &&
+      typeof window.favoriteEatsPlanSession.syncPlanSessionMonogramButtonState ===
+        'function'
+    ) {
+      window.favoriteEatsPlanSession.syncPlanSessionMonogramButtonState(
+        shoppingListMonogramManageBtn,
+        shoppingListMonogramCloseSessionBtn,
+      );
+    }
   };
 
   window.favoriteEatsMonogramMenuExtraButtons =
     ensureShoppingListMonogramActionButtons;
 
   window.favoriteEatsSyncShoppingListMonogramActions = () => {
-    syncShoppingListManageButtonState();
+    syncShoppingListPlanSessionButtonState();
     syncShoppingListClearButtonState();
     syncShoppingListCopyButtonState();
     syncShoppingListResetButtonState();
